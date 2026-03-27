@@ -31,6 +31,11 @@ COIN_COLORS = {
     "sc": ("#c4cad0", "#eff2f6", "#69727b"),
     "gc": ("#f0bc25", "#fff4b3", "#8d6500"),
 }
+IMAGE_ICON = 1
+LR_LOADFROMFILE = 0x0010
+WM_SETICON = 0x0080
+ICON_SMALL = 0
+ICON_BIG = 1
 
 
 def _hp_text_color(ratio: float) -> str:
@@ -821,6 +826,7 @@ class HealthPointsApp:
         self.sync_fetch_in_progress = False
         self.sync_result_queue: queue.Queue[tuple[str, object, bool]] = queue.Queue()
         self.coin_image_cache: dict[tuple[str, int], tk.PhotoImage] = {}
+        self.native_icon_handles: list[int] = []
 
         self._configure_style()
         self._build_layout()
@@ -842,6 +848,35 @@ class HealthPointsApp:
             window.iconbitmap(icon_path)
             window.iconbitmap(default=icon_path)
         except tk.TclError:
+            pass
+
+        if sys.platform == "win32":
+            window.after_idle(lambda: self._apply_native_window_icon(window, icon_path))
+
+    def _apply_native_window_icon(self, window: tk.Misc, icon_path: str) -> None:
+        if sys.platform != "win32":
+            return
+        try:
+            hwnd = window.winfo_id()
+        except tk.TclError:
+            return
+        if not hwnd:
+            return
+
+        try:
+            user32 = ctypes.windll.user32
+            icon_handle = user32.LoadImageW(None, icon_path, IMAGE_ICON, 0, 0, LR_LOADFROMFILE)
+        except (AttributeError, OSError):
+            return
+
+        if not icon_handle:
+            return
+
+        try:
+            user32.SendMessageW(hwnd, WM_SETICON, ICON_SMALL, icon_handle)
+            user32.SendMessageW(hwnd, WM_SETICON, ICON_BIG, icon_handle)
+            self.native_icon_handles.append(int(icon_handle))
+        except (AttributeError, OSError):
             return
 
     def sync_mode_active(self) -> bool:
