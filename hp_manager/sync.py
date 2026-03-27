@@ -68,9 +68,15 @@ class ParsedSpellSlotsSection:
 
 
 @dataclass(slots=True)
+class ParsedMoneySection:
+    name: str
+    money: dict[str, int]
+
+
+@dataclass(slots=True)
 class ParsedSyncData:
     hp_lines: list[ParsedSyncLine] = field(default_factory=list)
-    money: dict[str, int] | None = None
+    money_sections: list[ParsedMoneySection] = field(default_factory=list)
     spell_sections: list[ParsedSpellSlotsSection] = field(default_factory=list)
     issues: list["ParseIssue"] = field(default_factory=list)
 
@@ -102,9 +108,9 @@ def parse_sync_text(text: str) -> ParsedSyncData:
     parsed = ParsedSyncData()
     inside_block = False
     current_section = "hp"
+    current_money_owner = ""
     current_spell_owner = ""
-    money_values: dict[str, int] = {"cc": 0, "sc": 0, "gc": 0}
-    money_seen = False
+    money_sections: dict[str, dict[str, int]] = {}
     spell_sections: dict[str, dict[int, tuple[int, int]]] = {}
 
     for line_number, raw_line in enumerate(text.splitlines(), start=1):
@@ -126,14 +132,18 @@ def parse_sync_text(text: str) -> ParsedSyncData:
             section_target = (section_match.group("name") or "").strip()
             if section_name in HP_SECTION_NAMES:
                 current_section = "hp"
+                current_money_owner = ""
                 current_spell_owner = ""
                 continue
-            if section_name in MONEY_SECTION_NAMES:
+            if section_name in MONEY_SECTION_NAMES and section_target:
                 current_section = "money"
+                current_money_owner = section_target
                 current_spell_owner = ""
+                money_sections.setdefault(current_money_owner, {"cc": 0, "sc": 0, "gc": 0})
                 continue
             if section_name in SPELL_SECTION_NAMES and section_target:
                 current_section = "spell_slots"
+                current_money_owner = ""
                 current_spell_owner = section_target
                 spell_sections.setdefault(current_spell_owner, {})
                 continue
@@ -161,12 +171,16 @@ def parse_sync_text(text: str) -> ParsedSyncData:
             if not match:
                 parsed.issues.append(ParseIssue(line_number=line_number, line=line))
                 continue
+            if not current_money_owner:
+                parsed.issues.append(ParseIssue(line_number=line_number, line=line))
+                continue
             money_key = MONEY_ALIASES.get(match.group("kind").strip().casefold())
             if money_key is None:
                 parsed.issues.append(ParseIssue(line_number=line_number, line=line))
                 continue
-            money_values[money_key] = max(0, int(match.group("value")))
-            money_seen = True
+            money_sections.setdefault(current_money_owner, {"cc": 0, "sc": 0, "gc": 0})[money_key] = max(
+                0, int(match.group("value"))
+            )
             continue
 
         if current_section == "spell_slots":
@@ -182,8 +196,8 @@ def parse_sync_text(text: str) -> ParsedSyncData:
 
         parsed.issues.append(ParseIssue(line_number=line_number, line=line))
 
-    if money_seen:
-        parsed.money = money_values
+    for name, money in money_sections.items():
+        parsed.money_sections.append(ParsedMoneySection(name=name, money=money))
 
     for name, slots in spell_sections.items():
         parsed.spell_sections.append(ParsedSpellSlotsSection(name=name, slots=slots))

@@ -46,7 +46,7 @@ def _default_spell_slots() -> dict[int, SpellSlotTrack]:
 
 
 @dataclass(slots=True)
-class PartyMoney:
+class CoinPouch:
     cc: int = 0
     sc: int = 0
     gc: int = 0
@@ -65,7 +65,7 @@ class PartyMoney:
         return {"cc": self.cc, "sc": self.sc, "gc": self.gc}
 
     @classmethod
-    def from_dict(cls, data: dict[str, int | str] | None) -> "PartyMoney":
+    def from_dict(cls, data: dict[str, int | str] | None) -> "CoinPouch":
         if not data:
             return cls()
         return cls(
@@ -81,6 +81,7 @@ class Player:
     current_hp: int
     max_hp: int
     temp_hp: int = 0
+    money: CoinPouch = field(default_factory=CoinPouch)
     spell_slots: dict[int, SpellSlotTrack] = field(default_factory=_default_spell_slots)
     player_id: str = field(default_factory=lambda: uuid4().hex)
 
@@ -89,6 +90,8 @@ class Player:
         self.current_hp = max(0, min(_clean_int(self.current_hp, self.max_hp), self.max_hp))
         self.temp_hp = max(0, _clean_int(self.temp_hp))
         self.name = (self.name or "Unnamed").strip() or "Unnamed"
+        if not isinstance(self.money, CoinPouch):
+            self.money = CoinPouch.from_dict(self.money if isinstance(self.money, dict) else None)
         self.spell_slots = self._normalize_spell_slots(self.spell_slots)
 
     def apply_damage(self, amount: int) -> None:
@@ -116,6 +119,9 @@ class Player:
 
     def set_temp_hp(self, value: int) -> None:
         self.temp_hp = max(0, _clean_int(value, self.temp_hp))
+
+    def set_money(self, cc: int, sc: int, gc: int) -> None:
+        self.money.set_counts(cc, sc, gc)
 
     def set_spell_slot(self, level: int, current: int, maximum: int) -> None:
         if level not in SPELL_SLOT_LEVELS:
@@ -163,6 +169,7 @@ class Player:
             "current_hp": self.current_hp,
             "max_hp": self.max_hp,
             "temp_hp": self.temp_hp,
+            "money": self.money.to_dict(),
             "spell_slots": {str(level): slot.to_dict() for level, slot in self.spell_slots.items()},
         }
 
@@ -176,12 +183,14 @@ class Player:
                 if level not in SPELL_SLOT_LEVELS or not isinstance(raw_slot, dict):
                     continue
                 spell_slots[level] = SpellSlotTrack.from_dict(raw_slot)
+        raw_money = data.get("money")
         return cls(
             player_id=str(data.get("player_id") or uuid4().hex),
             name=str(data.get("name") or "Unnamed"),
             current_hp=_clean_int(data.get("current_hp"), 0),
             max_hp=_clean_int(data.get("max_hp"), 1),
             temp_hp=_clean_int(data.get("temp_hp"), 0),
+            money=CoinPouch.from_dict(raw_money if isinstance(raw_money, dict) else None),
             spell_slots=spell_slots,
         )
 
@@ -256,7 +265,6 @@ class OverlaySettings:
 @dataclass(slots=True)
 class AppState:
     players: list[Player] = field(default_factory=list)
-    money: PartyMoney = field(default_factory=PartyMoney)
     sync: SyncSettings = field(default_factory=SyncSettings)
     overlay: OverlaySettings = field(default_factory=OverlaySettings)
     locale: str = "en"
@@ -264,7 +272,6 @@ class AppState:
     def to_dict(self) -> dict[str, object]:
         return {
             "players": [player.to_dict() for player in self.players],
-            "money": self.money.to_dict(),
             "sync": self.sync.to_dict(),
             "overlay": self.overlay.to_dict(),
             "locale": self.locale,
@@ -280,15 +287,12 @@ class AppState:
         if isinstance(raw_players, list):
             players = [Player.from_dict(item) for item in raw_players if isinstance(item, dict)]
 
-        raw_money = data.get("money")
-        money = PartyMoney.from_dict(raw_money if isinstance(raw_money, dict) else None)
         raw_sync = data.get("sync")
         sync = SyncSettings.from_dict(raw_sync if isinstance(raw_sync, dict) else None)
         raw_overlay = data.get("overlay")
         overlay = OverlaySettings.from_dict(raw_overlay if isinstance(raw_overlay, dict) else None)
         return cls(
             players=players,
-            money=money,
             sync=sync,
             overlay=overlay,
             locale=normalize_locale(data.get("locale") if isinstance(data.get("locale"), str) else None),
