@@ -98,7 +98,10 @@ class PlayerWindow:
             fg=_hp_text_color(player.hp_ratio),
             font=("Consolas", self.app.state.overlay.hp_font_size, "bold"),
         )
-        self.temp_label.config(text=self.app.t("player.temp_hp", temp_hp=player.temp_hp))
+        self.temp_label.config(
+            text=self.app.t("player.temp_hp", temp_hp=player.temp_hp),
+            font=("Segoe UI", self.app.state.overlay.temp_hp_font_size),
+        )
         self._refresh_bar(player=player)
 
     def _refresh_bar(self, _event: object | None = None, player: Player | None = None) -> None:
@@ -432,7 +435,13 @@ class SpellSlotsWindow:
         self.title_label.config(text=self.app.t("spell.window_title", name=player.name))
         for level in self.visible_levels:
             slot = player.spell_slots[level]
-            self.slot_titles[level].config(text=SPELL_SLOT_ROMAN[level], bd=2, relief="solid", highlightbackground="#9d6b2f")
+            self.slot_titles[level].config(
+                text=SPELL_SLOT_ROMAN[level],
+                bd=2,
+                relief="solid",
+                highlightbackground="#9d6b2f",
+                font=("Segoe UI Semibold", self.app.state.overlay.spell_level_font_size),
+            )
             self.slot_values[level].config(
                 text=f"{slot.current} / {slot.maximum}",
                 highlightbackground="#9d6b2f",
@@ -763,7 +772,9 @@ class HealthPointsApp:
         self.money_order_var = tk.StringVar(value=self.money_order_label_for_code(self.state.overlay.money_order))
         self.spell_display_count_var = tk.StringVar(value=str(self.state.overlay.spell_display_count))
         self.hp_font_size_var = tk.StringVar(value=str(self.state.overlay.hp_font_size))
+        self.temp_hp_font_size_var = tk.StringVar(value=str(self.state.overlay.temp_hp_font_size))
         self.money_font_size_var = tk.StringVar(value=str(self.state.overlay.money_font_size))
+        self.spell_level_font_size_var = tk.StringVar(value=str(self.state.overlay.spell_level_font_size))
         self.spell_font_size_var = tk.StringVar(value=str(self.state.overlay.spell_font_size))
         self.overlay_show_title_var = tk.BooleanVar(value=self.state.overlay.show_title)
         self.player_windows_topmost_var = tk.BooleanVar(value=self.state.overlay.player_windows_topmost)
@@ -1142,32 +1153,44 @@ class HealthPointsApp:
         self.hp_font_size_combo.grid(row=5, column=1, sticky="w", padx=(12, 0), pady=(12, 0))
         self.hp_font_size_combo.bind("<<ComboboxSelected>>", self.save_overlay_settings)
 
+        self.temp_hp_font_size_label = ttk.Label(card)
+        self.temp_hp_font_size_label.grid(row=6, column=0, sticky="w", pady=(12, 0))
+        self.temp_hp_font_size_combo = ttk.Combobox(card, state="readonly", width=18, textvariable=self.temp_hp_font_size_var)
+        self.temp_hp_font_size_combo.grid(row=6, column=1, sticky="w", padx=(12, 0), pady=(12, 0))
+        self.temp_hp_font_size_combo.bind("<<ComboboxSelected>>", self.save_overlay_settings)
+
         self.money_font_size_label = ttk.Label(card)
-        self.money_font_size_label.grid(row=6, column=0, sticky="w", pady=(12, 0))
+        self.money_font_size_label.grid(row=7, column=0, sticky="w", pady=(12, 0))
         self.money_font_size_combo = ttk.Combobox(card, state="readonly", width=18, textvariable=self.money_font_size_var)
-        self.money_font_size_combo.grid(row=6, column=1, sticky="w", padx=(12, 0), pady=(12, 0))
+        self.money_font_size_combo.grid(row=7, column=1, sticky="w", padx=(12, 0), pady=(12, 0))
         self.money_font_size_combo.bind("<<ComboboxSelected>>", self.save_overlay_settings)
 
+        self.spell_level_font_size_label = ttk.Label(card)
+        self.spell_level_font_size_label.grid(row=8, column=0, sticky="w", pady=(12, 0))
+        self.spell_level_font_size_combo = ttk.Combobox(card, state="readonly", width=18, textvariable=self.spell_level_font_size_var)
+        self.spell_level_font_size_combo.grid(row=8, column=1, sticky="w", padx=(12, 0), pady=(12, 0))
+        self.spell_level_font_size_combo.bind("<<ComboboxSelected>>", self.save_overlay_settings)
+
         self.spell_font_size_label = ttk.Label(card)
-        self.spell_font_size_label.grid(row=7, column=0, sticky="w", pady=(12, 0))
+        self.spell_font_size_label.grid(row=9, column=0, sticky="w", pady=(12, 0))
         self.spell_font_size_combo = ttk.Combobox(card, state="readonly", width=18, textvariable=self.spell_font_size_var)
-        self.spell_font_size_combo.grid(row=7, column=1, sticky="w", padx=(12, 0), pady=(12, 0))
+        self.spell_font_size_combo.grid(row=9, column=1, sticky="w", padx=(12, 0), pady=(12, 0))
         self.spell_font_size_combo.bind("<<ComboboxSelected>>", self.save_overlay_settings)
 
         self.window_behavior_label = ttk.Label(card)
-        self.window_behavior_label.grid(row=8, column=0, columnspan=2, sticky="w", pady=(14, 0))
+        self.window_behavior_label.grid(row=10, column=0, columnspan=2, sticky="w", pady=(14, 0))
         self.player_windows_topmost_check = ttk.Checkbutton(
             card,
             variable=self.player_windows_topmost_var,
             command=self.save_overlay_settings,
         )
-        self.player_windows_topmost_check.grid(row=9, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        self.player_windows_topmost_check.grid(row=11, column=0, columnspan=2, sticky="w", pady=(8, 0))
         self.fill_windows_topmost_check = ttk.Checkbutton(
             card,
             variable=self.fill_windows_topmost_var,
             command=self.save_overlay_settings,
         )
-        self.fill_windows_topmost_check.grid(row=10, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        self.fill_windows_topmost_check.grid(row=12, column=0, columnspan=2, sticky="w", pady=(8, 0))
 
     def _build_status_bar(self, parent: ttk.Frame) -> None:
         ttk.Label(parent, textvariable=self.status_var, style="Muted.TLabel").grid(row=3, column=0, columnspan=2, sticky="ew", pady=(14, 0))
@@ -1232,7 +1255,9 @@ class HealthPointsApp:
         self.state.overlay.money_order = self.money_order_code_from_label(self.money_order_var.get())
         self.state.overlay.spell_display_count = max(1, min(9, int(self.spell_display_count_var.get() or "6")))
         self.state.overlay.hp_font_size = max(12, min(72, int(self.hp_font_size_var.get() or "34")))
+        self.state.overlay.temp_hp_font_size = max(12, min(72, int(self.temp_hp_font_size_var.get() or "12")))
         self.state.overlay.money_font_size = max(12, min(72, int(self.money_font_size_var.get() or "24")))
+        self.state.overlay.spell_level_font_size = max(12, min(72, int(self.spell_level_font_size_var.get() or "32")))
         self.state.overlay.spell_font_size = max(12, min(72, int(self.spell_font_size_var.get() or "24")))
         self.state.overlay.show_title = self.overlay_show_title_var.get()
         self.state.overlay.player_windows_topmost = self.player_windows_topmost_var.get()
@@ -1452,7 +1477,9 @@ class HealthPointsApp:
         self.money_order_label.config(text=self.t("label.money_order"))
         self.spell_display_count_label.config(text=self.t("label.spell_display_count"))
         self.hp_font_size_label.config(text=self.t("label.hp_font_size"))
+        self.temp_hp_font_size_label.config(text=self.t("label.temp_hp_font_size"))
         self.money_font_size_label.config(text=self.t("label.money_font_size"))
+        self.spell_level_font_size_label.config(text=self.t("label.spell_level_font_size"))
         self.spell_font_size_label.config(text=self.t("label.spell_font_size"))
         self.window_behavior_label.config(text=self.t("label.window_behavior"))
         self.overlay_ratio_combo.config(
@@ -1481,8 +1508,12 @@ class HealthPointsApp:
         self.spell_display_count_combo.set(str(self.state.overlay.spell_display_count))
         self.hp_font_size_combo.config(values=FONT_SIZE_OPTIONS)
         self.hp_font_size_combo.set(str(self.state.overlay.hp_font_size))
+        self.temp_hp_font_size_combo.config(values=FONT_SIZE_OPTIONS)
+        self.temp_hp_font_size_combo.set(str(self.state.overlay.temp_hp_font_size))
         self.money_font_size_combo.config(values=FONT_SIZE_OPTIONS)
         self.money_font_size_combo.set(str(self.state.overlay.money_font_size))
+        self.spell_level_font_size_combo.config(values=FONT_SIZE_OPTIONS)
+        self.spell_level_font_size_combo.set(str(self.state.overlay.spell_level_font_size))
         self.spell_font_size_combo.config(values=FONT_SIZE_OPTIONS)
         self.spell_font_size_combo.set(str(self.state.overlay.spell_font_size))
         self.overlay_title_check.config(text=self.t("overlay.show_title"))

@@ -236,7 +236,9 @@ class OverlaySettings:
     money_order: str = "cc_sc_gc"
     spell_display_count: int = 6
     hp_font_size: int = 34
+    temp_hp_font_size: int = 12
     money_font_size: int = 24
+    spell_level_font_size: int = 32
     spell_font_size: int = 24
 
     @staticmethod
@@ -270,7 +272,9 @@ class OverlaySettings:
             "money_order": self.money_order if self.money_order in self.valid_money_orders() else "cc_sc_gc",
             "spell_display_count": self.clean_spell_display_count(self.spell_display_count),
             "hp_font_size": self.clean_value_font_size(self.hp_font_size, 34),
+            "temp_hp_font_size": self.clean_value_font_size(self.temp_hp_font_size, 12),
             "money_font_size": self.clean_value_font_size(self.money_font_size, 24),
+            "spell_level_font_size": self.clean_value_font_size(self.spell_level_font_size, 32),
             "spell_font_size": self.clean_value_font_size(self.spell_font_size, 24),
         }
 
@@ -297,7 +301,9 @@ class OverlaySettings:
             money_order=money_order,
             spell_display_count=cls.clean_spell_display_count(data.get("spell_display_count")),
             hp_font_size=cls.clean_value_font_size(data.get("hp_font_size"), 34),
+            temp_hp_font_size=cls.clean_value_font_size(data.get("temp_hp_font_size"), 12),
             money_font_size=cls.clean_value_font_size(data.get("money_font_size"), 24),
+            spell_level_font_size=cls.clean_value_font_size(data.get("spell_level_font_size"), 32),
             spell_font_size=cls.clean_value_font_size(data.get("spell_font_size"), 24),
         )
 
