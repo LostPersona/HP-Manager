@@ -7,7 +7,7 @@ SUPPORTED_LOCALES = ("en", "ru")
 
 TRANSLATIONS: dict[str, dict[str, str]] = {
     "en": {
-        "app.title": "HP Manager",
+        "app.title": "HP Manager by LostPersona",
         "app.header": "HealthPoints Manager",
         "app.subtitle": "Track party HP, detach player views for OBS, and sync values from a Google Doc.",
         "language.label": "Language",
@@ -80,7 +80,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "error.sync.unknown": "Unexpected sync error: {message}",
     },
     "ru": {
-        "app.title": "Менеджер HP",
+        "app.title": "Менеджер HP by LostPersona",
         "app.header": "Менеджер очков здоровья",
         "app.subtitle": "Отслеживайте HP группы, выносите окна игроков для OBS и синхронизируйте значения из Google Doc.",
         "language.label": "Язык",
