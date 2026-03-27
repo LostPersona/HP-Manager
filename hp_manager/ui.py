@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ctypes
+import sys
 import threading
 import tkinter as tk
 from tkinter import messagebox
@@ -18,6 +20,7 @@ OVERLAY_SIZE = 220
 TRANSPARENT_KEY = "#00ff00"
 ICON_PATH = asset_path("app.ico")
 OVERLAY_TITLE_HEIGHT = 30
+WINDOWS_APP_ID = "LostPersona.HPManager"
 
 
 def _hp_text_color(ratio: float) -> str:
@@ -34,6 +37,15 @@ def _hp_bar_color(ratio: float) -> str:
     if ratio <= 0.5:
         return "#f2a900"
     return "#3ddc84"
+
+
+def _set_windows_app_id() -> None:
+    if sys.platform != "win32":
+        return
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(WINDOWS_APP_ID)
+    except (AttributeError, OSError):
+        return
 
 
 class PlayerWindow:
@@ -327,6 +339,7 @@ class PlayerRow:
 
 class HealthPointsApp:
     def __init__(self) -> None:
+        _set_windows_app_id()
         self.root = tk.Tk()
         self.apply_window_icon(self.root)
         self.root.minsize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
@@ -370,7 +383,9 @@ class HealthPointsApp:
         if not ICON_PATH.exists():
             return
         try:
-            window.iconbitmap(default=str(ICON_PATH.resolve()))
+            icon_path = str(ICON_PATH.resolve())
+            window.iconbitmap(icon_path)
+            window.iconbitmap(default=icon_path)
         except tk.TclError:
             return
 
