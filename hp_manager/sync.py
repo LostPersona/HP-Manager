@@ -18,7 +18,7 @@ HP_LINE_RE = re.compile(
 )
 SECTION_RE = re.compile(r"^\[\s*(?P<section>[^\]:]+?)\s*(?::\s*(?P<name>[^\]]+?)\s*)?\]$")
 MONEY_LINE_RE = re.compile(r"^(?P<kind>[A-Za-zА-Яа-я]+)\s*:\s*(?P<value>\d+)\s*$")
-SPELL_SLOT_RE = re.compile(r"^(?P<level>[1-6])\s*:\s*(?P<current>\d+)\s*/\s*(?P<max>\d+)\s*$")
+SPELL_SLOT_RE = re.compile(r"^(?P<level>[1-9])\s*:\s*(?P<current>\d+)\s*/\s*(?P<max>\d+)\s*$")
 
 DOC_LINK_PATTERNS = (
     re.compile(r"https?://docs\.google\.com/document/d/(?P<doc_id>[-\w]+)"),
