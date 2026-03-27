@@ -1,46 +1,115 @@
-# HP-Manager
+# More than HP Manager by LostPersona
 
-Desktop HealthPoints manager for DnD-like games, built with Python and `tkinter`.
+`More than HP Manager by LostPersona` is a desktop companion app for DnD-like and other TTRPG games. It started as an HP tracker, but the current project goes further: it can manage per-character health, coins, spell slots, and multiple OBS-friendly display windows from a single bilingual dashboard.
 
-## Current features
+Built with Python and `tkinter`, it is designed for GMs, streamers, and groups that want a lightweight local tool without needing a web app.
 
-- Main dashboard for adding and removing players
-- Per-player HP controls for damage, healing, and direct edits
-- Per-player money tracking with `cc`, `sc`, and `gc`
-- Per-player spell slot tracking for levels I-IX
-- Detachable floating player windows for OBS capture
-- Standalone money and spell slot windows for OBS capture
-- Optional floating portrait fill windows that fill red as HP drops
-- Centralized UI localization with English and Russian support
-- Local JSON persistence between launches
-- Google Doc sync via link-based text fetching
+## What it does
 
-## Run
+- Manage a party from one dashboard
+- Track per-character HP, temp HP, coins, and spell slots
+- Open separate standalone windows for OBS capture
+- Show a portrait fill window that changes with missing HP
+- Sync character data from a Google Doc
+- Work in English or Russian from the same codebase
+- Save settings and state locally between launches
 
-1. Install Python 3.11+.
-2. From the repository root, run:
+## Current capabilities
+
+### Character tracking
+
+Each character can store:
+
+- Name
+- Current HP
+- Max HP
+- Temp HP
+- Coins: `cc`, `sc`, `gc` or `мм`, `см`, `зм`
+- Spell slots for levels I-IX
+
+The dashboard supports manual editing when sync mode is off. When sync mode is on, the app can switch to a display-oriented mode and hide manual edit controls while still keeping OBS-related windows available.
+
+### OBS-friendly windows
+
+The app can spawn separate windows for:
+
+- HP
+- Money
+- Spell slots
+- Fill
+
+These windows are normal standalone windows, which makes them easier to capture through OBS `Window Capture`.
+
+The fill window supports:
+
+- `1:1`
+- `4:3`
+- `3:4`
+
+It can also optionally show the character name above the fill.
+
+### Advanced display settings
+
+There is a hidden-by-default extra settings panel for stream-facing customization.
+
+Current settings include:
+
+- Fill aspect ratio
+- Whether fill windows show the character name
+- Whether player windows stay on top
+- Whether fill windows stay on top
+- Money layout: separate lines or one line
+- Money order: `copper -> silver -> gold` or `gold -> silver -> copper`
+- Spell display count from `1` to `9`
+- Font size for HP value
+- Font size for temp HP text
+- Font size for money values
+- Font size for spell level headers
+- Font size for spell slot values
+- Spell cell size / scale
+
+All of these settings are persisted in the local state file.
+
+### Localization
+
+The UI is centralized around shared locale logic and currently supports:
+
+- English
+- Russian
+
+The selected language is saved and restored on the next launch.
+
+## Run locally
+
+Install Python `3.11+`, then from the repository root run:
 
 ```powershell
 python app.py
 ```
 
-The app saves its state into `hp_manager_state.json` in the app folder.
+The app stores its state in:
 
-The selected UI language is also saved there and restored on the next launch.
+```text
+hp_manager_state.json
+```
 
-## App icon
+By default, that file lives in the app folder, which also makes the packaged build portable.
 
-Place your `.ico` file at:
+## Assets
+
+### App icon
+
+Place the main icon here:
 
 ```text
 assets/app.ico
 ```
 
-There is a placeholder note at `assets/app.ico.placeholder.txt`. Replace it with your real icon file named `app.ico`, and the app will load it automatically.
+This icon is used by the application at runtime and should also be passed to PyInstaller when building the Windows `.exe`.
 
-When you package the app into a directory build, the bundled assets are loaded from PyInstaller's internal app contents, while the state JSON is still stored next to the `.exe`, which keeps the app portable for non-technical users.
+### Coin icons
 
-For custom money icons, place these files in:
+Optional custom coin icons can be placed here:
 
 ```text
 assets/coins/cc.png
@@ -48,19 +117,56 @@ assets/coins/sc.png
 assets/coins/gc.png
 ```
 
-The money windows will show the coin image on the left and the corresponding amount on the right. If those files are missing, the app falls back to built-in coin badges.
+If these files are present, money displays will show the icon on the left and the amount on the right. If they are missing, the app falls back to built-in badges.
+
+## Google Doc sync
+
+The app can fetch text from a Google Doc link and parse character records from it.
+
+Current sync behavior:
+
+- Paste a Google Doc link into the sync panel
+- Fetch the document manually or enable automatic polling
+- Hide the sync preview when you want more dashboard space
+- Restrict sync to only existing characters if you do not want renamed or unexpected names to create new entries
+
+If automatic sync is enabled, the app keeps rescheduling future polling attempts after both successful and failed fetches.
+
+### Sync mode behavior
+
+When sync mode is enabled:
+
+- Manual editing controls are hidden
+- OBS-oriented windows remain available
+- Fill windows remain available
+- Delete remains available
+
+This keeps the dashboard cleaner when the document is acting as the source of truth.
 
 ## Sync format
 
-The parser only reads lines placed between `>>>` markers. Inside those blocks, each character entry must start with `Name:` / `Имя:`. After that, the rest of the fields can appear in any order:
+The current parser reads content only inside `>>>` blocks.
+
+Inside those blocks, each character entry must begin with:
+
+- `Name:` in English
+- `Имя:` in Russian
+
+After that, the rest of the sections may appear in any order.
+
+Supported fields:
 
 - `Health:` / `Здоровье:`
 - `Coins:` / `Монеты:`
 - `Spell Slots:` / `Ячейки заклинаний:`
 
-Missing values default to zero. For health, that means `0/1 (0)` if no health line is present. Text outside those marker blocks is ignored by the parser.
+Missing values default to zero. For example:
 
-English example:
+- missing temp HP becomes `0`
+- missing coins become `0`
+- missing spell slots become `0/0`
+
+### English example
 
 ```text
 >>>
@@ -88,7 +194,7 @@ Spell Slots:
 >>>
 ```
 
-Russian example:
+### Russian example
 
 ```text
 >>>
@@ -116,25 +222,53 @@ Russian example:
 >>>
 ```
 
-Money aliases are:
+Supported money aliases:
 
 - EN: `cc`, `sc`, `gc`
 - RU: `мм`, `см`, `зм`
 
-## Google Doc sync
+## Packaging into a Windows `.exe`
 
-Paste a Google Doc link into the sync panel and use `Fetch Doc Now`, or enable sync mode so the app polls the document automatically.
+The project is currently set up well for a portable `PyInstaller --onedir` build.
 
-The app currently fetches the document through Google Docs text export, so the document should be readable by the app, for example via a share setting that allows viewing without a private sign-in prompt.
+Install PyInstaller:
 
-When automatic sync is enabled, temporary fetch failures should not stop polling permanently. The app will keep scheduling the next sync attempt after both successful and failed auto-fetches.
+```powershell
+py -m pip install pyinstaller
+```
 
-You can also enable an option that updates only existing players from sync data. With that enabled, unknown names from the Google Doc or pasted sync text are skipped instead of creating new dashboard entries, and their money/spell data is skipped as well.
+Build the app:
 
-You can also hide the sync preview entirely from the main window; that visibility state is saved between launches.
+```powershell
+py -m PyInstaller --noconfirm --clean --windowed --onedir --name HP-Manager --icon assets/app.ico --add-data "assets;assets" app.py
+```
 
-When sync mode itself is enabled, manual editing controls are hidden. That means the add-player form and per-player manual HP/money/spell slot editing actions disappear, while display-oriented OBS windows and fills remain available. The delete button also remains available in sync mode so players can still be removed from the dashboard.
+This produces a distributable folder under:
 
-There is also a hidden-by-default fill settings panel. From there you can choose whether portrait fills render as `1:1`, `4:3`, or `3:4`, whether the character name is shown above the fill, whether money windows use separate lines or a single row, whether coins are shown as copper-to-gold or gold-to-copper, how large the HP value, temp HP line, spell level headers, and money/spell values render in their OBS windows, how large spell cells themselves render, and whether spawned player/fill windows stay above other applications or can sit behind them for OBS-only capture. Those settings are saved between launches as well.
+```text
+dist\HP-Manager\
+```
 
-Player, money, spell slot, and fill views all open as normal standalone windows so they can be targeted more reliably by OBS window capture.
+Important behavior of the packaged app:
+
+- bundled assets are loaded from the PyInstaller runtime bundle
+- `hp_manager_state.json` is stored next to the `.exe`
+- the app remains portable as long as the whole folder stays together
+
+## Project structure
+
+Main files and folders:
+
+- `app.py` - entry point
+- `hp_manager/ui.py` - main interface and spawned windows
+- `hp_manager/models.py` - persisted state and data models
+- `hp_manager/sync.py` - sync parsing and Google Doc fetch logic
+- `hp_manager/localization.py` - centralized EN/RU locale strings
+- `hp_manager/paths.py` - asset and runtime path helpers
+- `assets/` - app icon and optional coin images
+
+## Notes
+
+- This project is Windows-friendly first, especially around icon handling and portable packaging.
+- The current sync source is Google Docs text export, not Google Sheets.
+- Google Sheets support was discussed as a future direction, but it is not part of the current implementation.
