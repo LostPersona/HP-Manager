@@ -361,6 +361,7 @@ class HealthPointsApp:
         self.sync_enabled_var = tk.BooleanVar(value=self.state.sync.enabled)
         self.sync_source_var = tk.StringVar(value=self.state.sync.source)
         self.sync_poll_var = tk.StringVar(value=str(self.state.sync.poll_seconds))
+        self.sync_existing_only_var = tk.BooleanVar(value=self.state.sync.existing_only)
         self.locale_display_var = tk.StringVar(value=self.localizer.locale_name(self.state.locale))
         self.overlay_ratio_var = tk.StringVar(value=self.state.overlay.aspect_ratio)
         self.overlay_show_title_var = tk.BooleanVar(value=self.state.overlay.show_title)
@@ -555,19 +556,21 @@ class HealthPointsApp:
         card = ttk.LabelFrame(parent, style="Section.TLabelframe", padding=14)
         card.grid(row=0, column=0, sticky="nsew")
         card.columnconfigure(1, weight=1)
-        card.rowconfigure(4, weight=1)
+        card.rowconfigure(5, weight=1)
         self.sync_card = card
 
         self.sync_enable_check = ttk.Checkbutton(card, variable=self.sync_enabled_var, command=self.save_sync_settings)
         self.sync_enable_check.grid(row=0, column=0, columnspan=2, sticky="w")
+        self.sync_existing_only_check = ttk.Checkbutton(card, variable=self.sync_existing_only_var, command=self.save_sync_settings)
+        self.sync_existing_only_check.grid(row=1, column=0, columnspan=2, sticky="w", pady=(8, 0))
         self.sync_source_label = ttk.Label(card)
-        self.sync_source_label.grid(row=1, column=0, sticky="w", pady=(12, 0))
-        ttk.Entry(card, textvariable=self.sync_source_var).grid(row=1, column=1, sticky="ew", pady=(12, 0))
+        self.sync_source_label.grid(row=2, column=0, sticky="w", pady=(12, 0))
+        ttk.Entry(card, textvariable=self.sync_source_var).grid(row=2, column=1, sticky="ew", pady=(12, 0))
         self.sync_poll_label = ttk.Label(card)
-        self.sync_poll_label.grid(row=2, column=0, sticky="w", pady=(12, 0))
-        ttk.Entry(card, textvariable=self.sync_poll_var, width=8).grid(row=2, column=1, sticky="w", pady=(12, 0))
+        self.sync_poll_label.grid(row=3, column=0, sticky="w", pady=(12, 0))
+        ttk.Entry(card, textvariable=self.sync_poll_var, width=8).grid(row=3, column=1, sticky="w", pady=(12, 0))
         self.sync_help_label = ttk.Label(card, style="Muted.TLabel")
-        self.sync_help_label.grid(row=3, column=0, columnspan=2, sticky="w", pady=(12, 8))
+        self.sync_help_label.grid(row=4, column=0, columnspan=2, sticky="w", pady=(12, 8))
 
         self.sync_text = tk.Text(
             card,
@@ -580,10 +583,10 @@ class HealthPointsApp:
             padx=10,
             pady=10,
         )
-        self.sync_text.grid(row=4, column=0, columnspan=2, sticky="nsew")
+        self.sync_text.grid(row=5, column=0, columnspan=2, sticky="nsew")
 
         button_row = ttk.Frame(card)
-        button_row.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(12, 0))
+        button_row.grid(row=6, column=0, columnspan=2, sticky="ew", pady=(12, 0))
         self.fetch_doc_button = ttk.Button(button_row, command=self.fetch_doc_now)
         self.fetch_doc_button.pack(side="left")
         self.apply_sync_button = ttk.Button(button_row, command=self.apply_sync_text)
@@ -767,9 +770,11 @@ class HealthPointsApp:
 
         self.sync_card.config(text=self.t("card.sync"))
         self.sync_enable_check.config(text=self.t("sync.enable"))
+        self.sync_existing_only_check.config(text=self.t("sync.only_existing"))
         self.sync_source_label.config(text=self.t("label.source"))
         self.sync_poll_label.config(text=self.t("label.poll_seconds"))
         self.sync_help_label.config(text=self.t("sync.help"))
+        self.sync_existing_only_var.set(self.state.sync.existing_only)
         self.fetch_doc_button.config(text=self.t("action.fetch_doc"))
         self.apply_sync_button.config(text=self.t("action.apply_parsed_lines"))
         self.load_example_button.config(text=self.t("action.load_example"))
@@ -877,6 +882,7 @@ class HealthPointsApp:
     def save_sync_settings(self, refresh_schedule: bool = True) -> None:
         self.state.sync.enabled = self.sync_enabled_var.get()
         self.state.sync.source = self.sync_source_var.get().strip()
+        self.state.sync.existing_only = self.sync_existing_only_var.get()
         try:
             self.state.sync.poll_seconds = max(5, int(self.sync_poll_var.get()))
         except ValueError:
@@ -967,17 +973,25 @@ class HealthPointsApp:
         self.sync_text.delete("1.0", "end")
         self.sync_text.insert("1.0", text)
         parsed, errors = parse_sync_text(text)
-        applied = self._apply_parsed_lines(parsed)
+        applied, skipped = self._apply_parsed_lines(parsed)
         self.persist_and_refresh()
         if auto:
             self.refresh_sync_schedule()
 
         if errors:
-            self.status_var.set(self.t("status.sync_applied_with_issues", applied=applied, issues=len(errors)))
+            if skipped:
+                self.status_var.set(
+                    self.t("status.sync_applied_with_issues_skipped", applied=applied, skipped=skipped, issues=len(errors))
+                )
+            else:
+                self.status_var.set(self.t("status.sync_applied_with_issues", applied=applied, issues=len(errors)))
             if not auto:
                 messagebox.showwarning(self.t("dialog.parse_issues.title"), "\n".join(self.format_parse_issues(errors)))
         else:
-            self.status_var.set(self.t("status.doc_fetched", applied=applied))
+            if skipped:
+                self.status_var.set(self.t("status.doc_fetched_skipped", applied=applied, skipped=skipped))
+            else:
+                self.status_var.set(self.t("status.doc_fetched", applied=applied))
 
     def _handle_fetch_failure(self, message: str, auto: bool) -> None:
         self.sync_fetch_in_progress = False
@@ -990,20 +1004,32 @@ class HealthPointsApp:
     def apply_sync_text(self) -> None:
         self.save_sync_settings()
         parsed, errors = parse_sync_text(self.sync_text.get("1.0", "end"))
-        applied = self._apply_parsed_lines(parsed)
+        applied, skipped = self._apply_parsed_lines(parsed)
 
         self.persist_and_refresh()
         if errors:
-            self.status_var.set(self.t("status.sync_applied_with_issues", applied=applied, issues=len(errors)))
+            if skipped:
+                self.status_var.set(
+                    self.t("status.sync_applied_with_issues_skipped", applied=applied, skipped=skipped, issues=len(errors))
+                )
+            else:
+                self.status_var.set(self.t("status.sync_applied_with_issues", applied=applied, issues=len(errors)))
             messagebox.showwarning(self.t("dialog.parse_issues.title"), "\n".join(self.format_parse_issues(errors)))
         else:
-            self.status_var.set(self.t("status.sync_applied", applied=applied))
+            if skipped:
+                self.status_var.set(self.t("status.sync_applied_skipped", applied=applied, skipped=skipped))
+            else:
+                self.status_var.set(self.t("status.sync_applied", applied=applied))
 
-    def _apply_parsed_lines(self, parsed_lines: list[ParsedSyncLine]) -> int:
+    def _apply_parsed_lines(self, parsed_lines: list[ParsedSyncLine]) -> tuple[int, int]:
         applied = 0
+        skipped = 0
         for line in parsed_lines:
             match = self._find_player_by_name(line.name)
             if match is None:
+                if self.state.sync.existing_only:
+                    skipped += 1
+                    continue
                 self.state.players.append(
                     Player(
                         name=line.name,
@@ -1018,7 +1044,7 @@ class HealthPointsApp:
                 match.set_current_hp(line.current_hp)
                 match.set_temp_hp(line.temp_hp)
             applied += 1
-        return applied
+        return applied, skipped
 
     def load_sync_example(self) -> None:
         example = ">>>\nAela Swift: 18/24\nBorin Spencer: 7/31 (5)\nCyra Vale: 2/16\n>>>\n"
@@ -1057,6 +1083,7 @@ class HealthPointsApp:
     def on_close(self) -> None:
         self.state.sync.enabled = self.sync_enabled_var.get()
         self.state.sync.source = self.sync_source_var.get().strip()
+        self.state.sync.existing_only = self.sync_existing_only_var.get()
         try:
             self.state.sync.poll_seconds = max(5, int(self.sync_poll_var.get()))
         except ValueError:

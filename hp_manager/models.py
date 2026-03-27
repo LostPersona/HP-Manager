@@ -87,6 +87,7 @@ class SyncSettings:
     source: str = ""
     poll_seconds: int = 15
     visible: bool = True
+    existing_only: bool = False
 
     def to_dict(self) -> dict[str, bool | int | str]:
         return {
@@ -94,6 +95,7 @@ class SyncSettings:
             "source": self.source,
             "poll_seconds": max(5, _clean_int(self.poll_seconds, 15)),
             "visible": self.visible,
+            "existing_only": self.existing_only,
         }
 
     @classmethod
@@ -105,6 +107,7 @@ class SyncSettings:
             source=str(data.get("source") or ""),
             poll_seconds=max(5, _clean_int(data.get("poll_seconds"), 15)),
             visible=bool(data.get("visible", True)),
+            existing_only=bool(data.get("existing_only", False)),
         )
 
 
