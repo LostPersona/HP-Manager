@@ -5,20 +5,18 @@ import re
 from urllib import error, parse, request
 
 
-HP_LINE_RE = re.compile(
+FIELD_RE = re.compile(r"^(?P<label>[^:]+?)\s*:\s*(?P<value>.*)$")
+HEALTH_VALUE_RE = re.compile(
     r"""
     ^\s*
-    (?P<name>[^:()]+?)
-    \s*:\s*
     (?P<current>\d+)\s*/\s*(?P<max>\d+)
     (?:\s*\(\s*(?P<temp>\d+)\s*\))?
     \s*$
     """,
     re.VERBOSE,
 )
-SECTION_RE = re.compile(r"^\[\s*(?P<section>[^\]:]+?)\s*(?::\s*(?P<name>[^\]]+?)\s*)?\]$")
-MONEY_LINE_RE = re.compile(r"^(?P<kind>[A-Za-zА-Яа-я]+)\s*:\s*(?P<value>\d+)\s*$")
 SPELL_SLOT_RE = re.compile(r"^(?P<level>[1-9])\s*:\s*(?P<current>\d+)\s*/\s*(?P<max>\d+)\s*$")
+MONEY_TOKEN_RE = re.compile(r"(?P<value>\d+)\s*(?P<kind>[A-Za-zА-Яа-я]+)")
 
 DOC_LINK_PATTERNS = (
     re.compile(r"https?://docs\.google\.com/document/d/(?P<doc_id>[-\w]+)"),
@@ -40,9 +38,10 @@ HIDDEN_SYNC_CHARS = {
     ord("\u2069"): None,
 }
 
-HP_SECTION_NAMES = {"hp", "хп"}
-MONEY_SECTION_NAMES = {"money", "деньги"}
-SPELL_SECTION_NAMES = {"spell_slots", "spellslots", "ячейки_заклинаний", "ячейкизаклинаний"}
+NAME_FIELD_NAMES = {"name", "имя"}
+HEALTH_FIELD_NAMES = {"health", "hp", "здоровье", "хп"}
+MONEY_FIELD_NAMES = {"coins", "coin", "money", "монеты", "деньги"}
+SPELL_FIELD_NAMES = {"spell_slots", "spellslots", "spells", "ячейки_заклинаний", "ячейкизаклинаний"}
 MONEY_ALIASES = {
     "cc": "cc",
     "sc": "sc",
@@ -51,6 +50,7 @@ MONEY_ALIASES = {
     "см": "sc",
     "зм": "gc",
 }
+SPELL_SLOT_LEVELS = tuple(range(1, 10))
 
 
 @dataclass(slots=True)
@@ -104,103 +104,163 @@ def _normalize_section_name(value: str) -> str:
     return value.strip().casefold().replace(" ", "_")
 
 
+def _default_money() -> dict[str, int]:
+    return {"cc": 0, "sc": 0, "gc": 0}
+
+
+def _default_spell_slots() -> dict[int, tuple[int, int]]:
+    return {level: (0, 0) for level in SPELL_SLOT_LEVELS}
+
+
+def _parse_money_value(value: str) -> dict[str, int] | None:
+    money = _default_money()
+    stripped = value.strip()
+    if not stripped:
+        return money
+
+    cursor = 0
+    matched = False
+    for match in MONEY_TOKEN_RE.finditer(stripped):
+        if stripped[cursor:match.start()].strip():
+            return None
+        money_key = MONEY_ALIASES.get(match.group("kind").strip().casefold())
+        if money_key is None:
+            return None
+        money[money_key] = max(0, int(match.group("value")))
+        cursor = match.end()
+        matched = True
+
+    if stripped[cursor:].strip():
+        return None
+
+    return money if matched else None
+
+
 def parse_sync_text(text: str) -> ParsedSyncData:
     parsed = ParsedSyncData()
     inside_block = False
-    current_section = "hp"
-    current_money_owner = ""
-    current_spell_owner = ""
-    money_sections: dict[str, dict[str, int]] = {}
-    spell_sections: dict[str, dict[int, tuple[int, int]]] = {}
+    collecting_spell_slots = False
+    current_record: dict[str, object] | None = None
+
+    def finalize_record() -> None:
+        nonlocal current_record
+        if current_record is None:
+            return
+
+        name = str(current_record["name"]).strip()
+        if not name:
+            current_record = None
+            return
+
+        current_hp, max_hp, temp_hp = current_record.get("health", (0, 1, 0))  # type: ignore[assignment]
+        money = dict(current_record.get("money", _default_money()))  # type: ignore[arg-type]
+        slots = dict(current_record.get("spell_slots", _default_spell_slots()))  # type: ignore[arg-type]
+
+        parsed.hp_lines.append(
+            ParsedSyncLine(
+                name=name,
+                current_hp=max(0, int(current_hp)),
+                max_hp=max(1, int(max_hp)),
+                temp_hp=max(0, int(temp_hp)),
+            )
+        )
+        parsed.money_sections.append(ParsedMoneySection(name=name, money=money))
+        parsed.spell_sections.append(ParsedSpellSlotsSection(name=name, slots=slots))
+        current_record = None
 
     for line_number, raw_line in enumerate(text.splitlines(), start=1):
         line = _normalize_sync_line(raw_line)
 
         if line == ">>>":
-            inside_block = not inside_block
             if inside_block:
-                current_section = "hp"
-                current_spell_owner = ""
+                finalize_record()
+                collecting_spell_slots = False
+                inside_block = False
+            else:
+                inside_block = True
+                collecting_spell_slots = False
+                current_record = None
             continue
 
-        if not inside_block or not line:
+        if not inside_block:
             continue
 
-        section_match = SECTION_RE.match(line)
-        if section_match:
-            section_name = _normalize_section_name(section_match.group("section"))
-            section_target = (section_match.group("name") or "").strip()
-            if section_name in HP_SECTION_NAMES:
-                current_section = "hp"
-                current_money_owner = ""
-                current_spell_owner = ""
-                continue
-            if section_name in MONEY_SECTION_NAMES and section_target:
-                current_section = "money"
-                current_money_owner = section_target
-                current_spell_owner = ""
-                money_sections.setdefault(current_money_owner, {"cc": 0, "sc": 0, "gc": 0})
-                continue
-            if section_name in SPELL_SECTION_NAMES and section_target:
-                current_section = "spell_slots"
-                current_money_owner = ""
-                current_spell_owner = section_target
-                spell_sections.setdefault(current_spell_owner, {})
-                continue
+        if not line:
+            collecting_spell_slots = False
+            continue
 
+        if collecting_spell_slots and current_record is not None:
+            spell_match = SPELL_SLOT_RE.match(line)
+            if spell_match:
+                level = int(spell_match.group("level"))
+                current = int(spell_match.group("current"))
+                maximum = max(0, int(spell_match.group("max")))
+                spell_slots = current_record.setdefault("spell_slots", _default_spell_slots())
+                if isinstance(spell_slots, dict):
+                    spell_slots[level] = (max(0, min(current, maximum)), maximum)
+                continue
+            collecting_spell_slots = False
+
+        field_match = FIELD_RE.match(line)
+        if not field_match:
             parsed.issues.append(ParseIssue(line_number=line_number, line=line))
             continue
 
-        if current_section == "hp":
-            match = HP_LINE_RE.match(line)
-            if not match:
+        field_name = _normalize_section_name(field_match.group("label"))
+        field_value = field_match.group("value").strip()
+
+        if field_name in NAME_FIELD_NAMES:
+            if not field_value:
                 parsed.issues.append(ParseIssue(line_number=line_number, line=line))
+                collecting_spell_slots = False
                 continue
-            parsed.hp_lines.append(
-                ParsedSyncLine(
-                    name=match.group("name").strip(),
-                    current_hp=int(match.group("current")),
-                    max_hp=max(1, int(match.group("max"))),
-                    temp_hp=max(0, int(match.group("temp") or 0)),
-                )
-            )
+            finalize_record()
+            current_record = {
+                "name": field_value,
+                "health": (0, 1, 0),
+                "money": _default_money(),
+                "spell_slots": _default_spell_slots(),
+            }
+            collecting_spell_slots = False
             continue
 
-        if current_section == "money":
-            match = MONEY_LINE_RE.match(line)
-            if not match:
-                parsed.issues.append(ParseIssue(line_number=line_number, line=line))
-                continue
-            if not current_money_owner:
-                parsed.issues.append(ParseIssue(line_number=line_number, line=line))
-                continue
-            money_key = MONEY_ALIASES.get(match.group("kind").strip().casefold())
-            if money_key is None:
-                parsed.issues.append(ParseIssue(line_number=line_number, line=line))
-                continue
-            money_sections.setdefault(current_money_owner, {"cc": 0, "sc": 0, "gc": 0})[money_key] = max(
-                0, int(match.group("value"))
-            )
+        if current_record is None:
+            parsed.issues.append(ParseIssue(line_number=line_number, line=line))
+            collecting_spell_slots = False
             continue
 
-        if current_section == "spell_slots":
-            match = SPELL_SLOT_RE.match(line)
-            if not match or not current_spell_owner:
+        if field_name in HEALTH_FIELD_NAMES:
+            health_match = HEALTH_VALUE_RE.match(field_value)
+            if not health_match:
                 parsed.issues.append(ParseIssue(line_number=line_number, line=line))
+                collecting_spell_slots = False
                 continue
-            level = int(match.group("level"))
-            current = int(match.group("current"))
-            maximum = max(0, int(match.group("max")))
-            spell_sections.setdefault(current_spell_owner, {})[level] = (max(0, min(current, maximum)), maximum)
+            current_record["health"] = (
+                int(health_match.group("current")),
+                max(1, int(health_match.group("max"))),
+                max(0, int(health_match.group("temp") or 0)),
+            )
+            collecting_spell_slots = False
+            continue
+
+        if field_name in MONEY_FIELD_NAMES:
+            money = _parse_money_value(field_value)
+            if money is None:
+                parsed.issues.append(ParseIssue(line_number=line_number, line=line))
+                collecting_spell_slots = False
+                continue
+            current_record["money"] = money
+            collecting_spell_slots = False
+            continue
+
+        if field_name in SPELL_FIELD_NAMES:
+            collecting_spell_slots = True
             continue
 
         parsed.issues.append(ParseIssue(line_number=line_number, line=line))
 
-    for name, money in money_sections.items():
-        parsed.money_sections.append(ParsedMoneySection(name=name, money=money))
-
-    for name, slots in spell_sections.items():
-        parsed.spell_sections.append(ParsedSpellSlotsSection(name=name, slots=slots))
+    if inside_block:
+        finalize_record()
 
     return parsed
 
