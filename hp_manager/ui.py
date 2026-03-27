@@ -1497,27 +1497,50 @@ class HealthPointsApp:
         return applied, skipped
 
     def load_sync_example(self) -> None:
-        example = (
-            ">>>\n"
-            "[HP]\n"
-            "Aela Swift: 18/24\n"
-            "Borin Spencer: 7/31 (5)\n"
-            "Cyra Vale: 2/16\n"
-            "\n"
-            "[MONEY: Cyra Vale]\n"
-            "cc: 12\n"
-            "sc: 7\n"
-            "gc: 42\n"
-            "\n"
-            "[SPELL_SLOTS: Cyra Vale]\n"
-            "1: 4/4\n"
-            "2: 3/3\n"
-            "3: 2/3\n"
-            "4: 1/1\n"
-            "5: 0/0\n"
-            "6: 0/0\n"
-            ">>>\n"
-        )
+        if self.state.locale == "ru":
+            example = (
+                ">>>\n"
+                "[ХП]\n"
+                "Аэла Свифт: 18/24\n"
+                "Борин Спенсер: 7/31 (5)\n"
+                "Сайра Вейл: 2/16\n"
+                "\n"
+                "[ДЕНЬГИ: Сайра Вейл]\n"
+                "мм: 12\n"
+                "см: 7\n"
+                "зм: 42\n"
+                "\n"
+                "[ЯЧЕЙКИ_ЗАКЛИНАНИЙ: Сайра Вейл]\n"
+                "1: 4/4\n"
+                "2: 3/3\n"
+                "3: 2/3\n"
+                "4: 1/1\n"
+                "5: 0/0\n"
+                "6: 0/0\n"
+                ">>>\n"
+            )
+        else:
+            example = (
+                ">>>\n"
+                "[HP]\n"
+                "Aela Swift: 18/24\n"
+                "Borin Spencer: 7/31 (5)\n"
+                "Cyra Vale: 2/16\n"
+                "\n"
+                "[MONEY: Cyra Vale]\n"
+                "cc: 12\n"
+                "sc: 7\n"
+                "gc: 42\n"
+                "\n"
+                "[SPELL_SLOTS: Cyra Vale]\n"
+                "1: 4/4\n"
+                "2: 3/3\n"
+                "3: 2/3\n"
+                "4: 1/1\n"
+                "5: 0/0\n"
+                "6: 0/0\n"
+                ">>>\n"
+            )
         self.sync_text.delete("1.0", "end")
         self.sync_text.insert("1.0", example)
         self.status_var.set(self.t("status.example_loaded"))
