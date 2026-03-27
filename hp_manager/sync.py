@@ -47,11 +47,27 @@ class SyncFetchError(Exception):
         self.context = context
 
 
+def _iter_sync_block_lines(text: str) -> list[tuple[int, str]]:
+    lines: list[tuple[int, str]] = []
+    inside_block = False
+
+    for line_number, raw_line in enumerate(text.splitlines(), start=1):
+        stripped = raw_line.strip()
+        if stripped == "---":
+            inside_block = not inside_block
+            continue
+
+        if inside_block:
+            lines.append((line_number, raw_line))
+
+    return lines
+
+
 def parse_sync_text(text: str) -> tuple[list[ParsedSyncLine], list[ParseIssue]]:
     parsed: list[ParsedSyncLine] = []
     errors: list[ParseIssue] = []
 
-    for line_number, raw_line in enumerate(text.splitlines(), start=1):
+    for line_number, raw_line in _iter_sync_block_lines(text):
         line = raw_line.strip()
         if not line:
             continue

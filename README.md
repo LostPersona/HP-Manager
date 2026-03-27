@@ -39,23 +39,27 @@ When you package the app into a directory build, keep the `assets` folder next t
 
 ## Sync format
 
-The parser supports lines in this format:
+The parser only reads HP lines placed between `---` markers:
 
 ```text
+---
 Name: current_hp/max_hp(temp_hp)
+---
 ```
 
 Examples:
 
 ```text
+---
 Artem: 32/45
 Artem: 32/45 (10)
 Aela Swift: 18/24
 Borin Spencer: 7/31 (5)
 Cyra Vale: 2/16
+---
 ```
 
-If temp HP is omitted, it defaults to `0`.
+If temp HP is omitted, it defaults to `0`. Text outside those marker blocks is ignored by the parser.
 
 ## Google Doc sync
 

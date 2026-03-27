@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import queue
 import sys
 import threading
 import tkinter as tk
@@ -367,7 +368,9 @@ class HealthPointsApp:
         self.fill_windows_topmost_var = tk.BooleanVar(value=self.state.overlay.fill_windows_topmost)
         self.layout_mode = ""
         self.sync_after_id: str | None = None
+        self.sync_result_after_id: str | None = None
         self.sync_fetch_in_progress = False
+        self.sync_result_queue: queue.Queue[tuple[str, object, bool]] = queue.Queue()
 
         self._configure_style()
         self._build_layout()
@@ -893,6 +896,35 @@ class HealthPointsApp:
             delay_ms = max(5, self.state.sync.poll_seconds) * 1000
             self.sync_after_id = self.root.after(delay_ms, self._poll_sync_source)
 
+    def _schedule_sync_result_processing(self) -> None:
+        if self.sync_result_after_id is None:
+            self.sync_result_after_id = self.root.after(100, self._process_sync_results)
+
+    def _process_sync_results(self) -> None:
+        self.sync_result_after_id = None
+        handled_result = False
+
+        while True:
+            try:
+                result_type, payload, auto = self.sync_result_queue.get_nowait()
+            except queue.Empty:
+                break
+
+            handled_result = True
+            if result_type == "success":
+                self._handle_fetch_success(str(payload), auto)
+            elif result_type == "sync_error":
+                message_key, context = payload if isinstance(payload, tuple) else ("error.sync.unknown", {})
+                context_dict = context if isinstance(context, dict) else {}
+                self._handle_fetch_failure(self.t(str(message_key), **context_dict), auto)
+            else:
+                self._handle_fetch_failure(self.t("error.sync.unknown", message=str(payload)), auto)
+
+        if self.sync_fetch_in_progress or not self.sync_result_queue.empty():
+            self._schedule_sync_result_processing()
+        elif not handled_result:
+            self.sync_result_after_id = None
+
     def _poll_sync_source(self) -> None:
         self.sync_after_id = None
         self.fetch_doc_now(auto=True)
@@ -916,18 +948,19 @@ class HealthPointsApp:
 
         worker = threading.Thread(target=self._fetch_doc_worker, args=(source, auto), daemon=True)
         worker.start()
+        self._schedule_sync_result_processing()
 
     def _fetch_doc_worker(self, source: str, auto: bool) -> None:
         try:
             text = fetch_google_doc_text(source)
         except SyncFetchError as exc:
-            self.root.after(0, lambda: self._handle_fetch_failure(self.t(exc.message_key, **exc.context), auto))
+            self.sync_result_queue.put(("sync_error", (exc.message_key, exc.context), auto))
             return
         except Exception as exc:
-            self.root.after(0, lambda: self._handle_fetch_failure(self.t("error.sync.unknown", message=str(exc)), auto))
+            self.sync_result_queue.put(("unknown_error", str(exc), auto))
             return
 
-        self.root.after(0, lambda: self._handle_fetch_success(text, auto))
+        self.sync_result_queue.put(("success", text, auto))
 
     def _handle_fetch_success(self, text: str, auto: bool) -> None:
         self.sync_fetch_in_progress = False
@@ -988,7 +1021,7 @@ class HealthPointsApp:
         return applied
 
     def load_sync_example(self) -> None:
-        example = "Aela Swift: 18/24\nBorin Spencer: 7/31 (5)\nCyra Vale: 2/16\n"
+        example = "---\nAela Swift: 18/24\nBorin Spencer: 7/31 (5)\nCyra Vale: 2/16\n---\n"
         self.sync_text.delete("1.0", "end")
         self.sync_text.insert("1.0", example)
         self.status_var.set(self.t("status.example_loaded"))
@@ -1031,6 +1064,9 @@ class HealthPointsApp:
         if self.sync_after_id is not None:
             self.root.after_cancel(self.sync_after_id)
             self.sync_after_id = None
+        if self.sync_result_after_id is not None:
+            self.root.after_cancel(self.sync_result_after_id)
+            self.sync_result_after_id = None
         save_state(self.state)
         self.root.destroy()
 
