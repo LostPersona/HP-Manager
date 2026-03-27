@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import re
 from urllib import error, parse, request
 
 
-LINE_RE = re.compile(
+HP_LINE_RE = re.compile(
     r"""
     ^\s*
     (?P<name>[^:()]+?)
@@ -16,6 +16,9 @@ LINE_RE = re.compile(
     """,
     re.VERBOSE,
 )
+SECTION_RE = re.compile(r"^\[\s*(?P<section>[^\]:]+?)\s*(?::\s*(?P<name>[^\]]+?)\s*)?\]$")
+MONEY_LINE_RE = re.compile(r"^(?P<kind>[A-Za-zА-Яа-я]+)\s*:\s*(?P<value>\d+)\s*$")
+SPELL_SLOT_RE = re.compile(r"^(?P<level>[1-6])\s*:\s*(?P<current>\d+)\s*/\s*(?P<max>\d+)\s*$")
 
 DOC_LINK_PATTERNS = (
     re.compile(r"https?://docs\.google\.com/document/d/(?P<doc_id>[-\w]+)"),
@@ -24,17 +27,29 @@ DOC_LINK_PATTERNS = (
 )
 
 HIDDEN_SYNC_CHARS = {
-    ord("\ufeff"): None,  # BOM / zero-width no-break space
-    ord("\u200b"): None,  # zero-width space
-    ord("\u200c"): None,  # zero-width non-joiner
-    ord("\u200d"): None,  # zero-width joiner
-    ord("\u200e"): None,  # left-to-right mark
-    ord("\u200f"): None,  # right-to-left mark
-    ord("\u2060"): None,  # word joiner
-    ord("\u2066"): None,  # left-to-right isolate
-    ord("\u2067"): None,  # right-to-left isolate
-    ord("\u2068"): None,  # first-strong isolate
-    ord("\u2069"): None,  # pop directional isolate
+    ord("\ufeff"): None,
+    ord("\u200b"): None,
+    ord("\u200c"): None,
+    ord("\u200d"): None,
+    ord("\u200e"): None,
+    ord("\u200f"): None,
+    ord("\u2060"): None,
+    ord("\u2066"): None,
+    ord("\u2067"): None,
+    ord("\u2068"): None,
+    ord("\u2069"): None,
+}
+
+HP_SECTION_NAMES = {"hp", "хп"}
+MONEY_SECTION_NAMES = {"money", "деньги"}
+SPELL_SECTION_NAMES = {"spell_slots", "spellslots", "ячейки_заклинаний", "ячейкизаклинаний"}
+MONEY_ALIASES = {
+    "cc": "cc",
+    "sc": "sc",
+    "gc": "gc",
+    "мм": "cc",
+    "см": "sc",
+    "зм": "gc",
 }
 
 
@@ -44,6 +59,20 @@ class ParsedSyncLine:
     current_hp: int
     max_hp: int
     temp_hp: int
+
+
+@dataclass(slots=True)
+class ParsedSpellSlotsSection:
+    name: str
+    slots: dict[int, tuple[int, int]]
+
+
+@dataclass(slots=True)
+class ParsedSyncData:
+    hp_lines: list[ParsedSyncLine] = field(default_factory=list)
+    money: dict[str, int] | None = None
+    spell_sections: list[ParsedSpellSlotsSection] = field(default_factory=list)
+    issues: list["ParseIssue"] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -65,46 +94,101 @@ def _normalize_sync_line(raw_line: str) -> str:
     return raw_line.translate(HIDDEN_SYNC_CHARS).strip()
 
 
-def _iter_sync_block_lines(text: str) -> list[tuple[int, str]]:
-    lines: list[tuple[int, str]] = []
+def _normalize_section_name(value: str) -> str:
+    return value.strip().casefold().replace(" ", "_")
+
+
+def parse_sync_text(text: str) -> ParsedSyncData:
+    parsed = ParsedSyncData()
     inside_block = False
+    current_section = "hp"
+    current_spell_owner = ""
+    money_values: dict[str, int] = {"cc": 0, "sc": 0, "gc": 0}
+    money_seen = False
+    spell_sections: dict[str, dict[int, tuple[int, int]]] = {}
 
     for line_number, raw_line in enumerate(text.splitlines(), start=1):
-        stripped = _normalize_sync_line(raw_line)
-        if stripped == ">>>":
-            inside_block = not inside_block
-            continue
-
-        if inside_block:
-            lines.append((line_number, raw_line))
-
-    return lines
-
-
-def parse_sync_text(text: str) -> tuple[list[ParsedSyncLine], list[ParseIssue]]:
-    parsed: list[ParsedSyncLine] = []
-    errors: list[ParseIssue] = []
-
-    for line_number, raw_line in _iter_sync_block_lines(text):
         line = _normalize_sync_line(raw_line)
-        if not line:
+
+        if line == ">>>":
+            inside_block = not inside_block
+            if inside_block:
+                current_section = "hp"
+                current_spell_owner = ""
             continue
 
-        match = LINE_RE.match(line)
-        if not match:
-            errors.append(ParseIssue(line_number=line_number, line=line))
+        if not inside_block or not line:
             continue
 
-        parsed.append(
-            ParsedSyncLine(
-                name=match.group("name").strip(),
-                current_hp=int(match.group("current")),
-                max_hp=max(1, int(match.group("max"))),
-                temp_hp=max(0, int(match.group("temp") or 0)),
+        section_match = SECTION_RE.match(line)
+        if section_match:
+            section_name = _normalize_section_name(section_match.group("section"))
+            section_target = (section_match.group("name") or "").strip()
+            if section_name in HP_SECTION_NAMES:
+                current_section = "hp"
+                current_spell_owner = ""
+                continue
+            if section_name in MONEY_SECTION_NAMES:
+                current_section = "money"
+                current_spell_owner = ""
+                continue
+            if section_name in SPELL_SECTION_NAMES and section_target:
+                current_section = "spell_slots"
+                current_spell_owner = section_target
+                spell_sections.setdefault(current_spell_owner, {})
+                continue
+
+            parsed.issues.append(ParseIssue(line_number=line_number, line=line))
+            continue
+
+        if current_section == "hp":
+            match = HP_LINE_RE.match(line)
+            if not match:
+                parsed.issues.append(ParseIssue(line_number=line_number, line=line))
+                continue
+            parsed.hp_lines.append(
+                ParsedSyncLine(
+                    name=match.group("name").strip(),
+                    current_hp=int(match.group("current")),
+                    max_hp=max(1, int(match.group("max"))),
+                    temp_hp=max(0, int(match.group("temp") or 0)),
+                )
             )
-        )
+            continue
 
-    return parsed, errors
+        if current_section == "money":
+            match = MONEY_LINE_RE.match(line)
+            if not match:
+                parsed.issues.append(ParseIssue(line_number=line_number, line=line))
+                continue
+            money_key = MONEY_ALIASES.get(match.group("kind").strip().casefold())
+            if money_key is None:
+                parsed.issues.append(ParseIssue(line_number=line_number, line=line))
+                continue
+            money_values[money_key] = max(0, int(match.group("value")))
+            money_seen = True
+            continue
+
+        if current_section == "spell_slots":
+            match = SPELL_SLOT_RE.match(line)
+            if not match or not current_spell_owner:
+                parsed.issues.append(ParseIssue(line_number=line_number, line=line))
+                continue
+            level = int(match.group("level"))
+            current = int(match.group("current"))
+            maximum = max(0, int(match.group("max")))
+            spell_sections.setdefault(current_spell_owner, {})[level] = (max(0, min(current, maximum)), maximum)
+            continue
+
+        parsed.issues.append(ParseIssue(line_number=line_number, line=line))
+
+    if money_seen:
+        parsed.money = money_values
+
+    for name, slots in spell_sections.items():
+        parsed.spell_sections.append(ParsedSpellSlotsSection(name=name, slots=slots))
+
+    return parsed
 
 
 def extract_google_doc_id(source: str) -> str:
