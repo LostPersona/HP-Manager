@@ -23,6 +23,20 @@ DOC_LINK_PATTERNS = (
     re.compile(r"https?://drive\.google\.com/open\?id=(?P<doc_id>[-\w]+)"),
 )
 
+HIDDEN_SYNC_CHARS = {
+    ord("\ufeff"): None,  # BOM / zero-width no-break space
+    ord("\u200b"): None,  # zero-width space
+    ord("\u200c"): None,  # zero-width non-joiner
+    ord("\u200d"): None,  # zero-width joiner
+    ord("\u200e"): None,  # left-to-right mark
+    ord("\u200f"): None,  # right-to-left mark
+    ord("\u2060"): None,  # word joiner
+    ord("\u2066"): None,  # left-to-right isolate
+    ord("\u2067"): None,  # right-to-left isolate
+    ord("\u2068"): None,  # first-strong isolate
+    ord("\u2069"): None,  # pop directional isolate
+}
+
 
 @dataclass(slots=True)
 class ParsedSyncLine:
@@ -47,12 +61,16 @@ class SyncFetchError(Exception):
         self.context = context
 
 
+def _normalize_sync_line(raw_line: str) -> str:
+    return raw_line.translate(HIDDEN_SYNC_CHARS).strip()
+
+
 def _iter_sync_block_lines(text: str) -> list[tuple[int, str]]:
     lines: list[tuple[int, str]] = []
     inside_block = False
 
     for line_number, raw_line in enumerate(text.splitlines(), start=1):
-        stripped = raw_line.strip()
+        stripped = _normalize_sync_line(raw_line)
         if stripped == ">>>":
             inside_block = not inside_block
             continue
@@ -68,7 +86,7 @@ def parse_sync_text(text: str) -> tuple[list[ParsedSyncLine], list[ParseIssue]]:
     errors: list[ParseIssue] = []
 
     for line_number, raw_line in _iter_sync_block_lines(text):
-        line = raw_line.strip()
+        line = _normalize_sync_line(raw_line)
         if not line:
             continue
 
