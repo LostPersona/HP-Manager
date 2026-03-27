@@ -1,0 +1,1 @@
+"""HP Manager package."""
