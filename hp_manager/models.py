@@ -113,6 +113,8 @@ class OverlaySettings:
     aspect_ratio: str = "1:1"
     show_title: bool = False
     panel_visible: bool = False
+    player_windows_topmost: bool = True
+    fill_windows_topmost: bool = True
 
     @staticmethod
     def valid_aspect_ratios() -> set[str]:
@@ -123,6 +125,8 @@ class OverlaySettings:
             "aspect_ratio": self.aspect_ratio if self.aspect_ratio in self.valid_aspect_ratios() else "1:1",
             "show_title": self.show_title,
             "panel_visible": self.panel_visible,
+            "player_windows_topmost": self.player_windows_topmost,
+            "fill_windows_topmost": self.fill_windows_topmost,
         }
 
     @classmethod
@@ -136,6 +140,8 @@ class OverlaySettings:
             aspect_ratio=aspect_ratio,
             show_title=bool(data.get("show_title", False)),
             panel_visible=bool(data.get("panel_visible", False)),
+            player_windows_topmost=bool(data.get("player_windows_topmost", True)),
+            fill_windows_topmost=bool(data.get("fill_windows_topmost", True)),
         )
 
 

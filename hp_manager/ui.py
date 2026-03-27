@@ -56,7 +56,7 @@ class PlayerWindow:
         self.window.title("")
         self.window.geometry("360x170")
         self.window.minsize(320, 150)
-        self.window.attributes("-topmost", True)
+        self.app.apply_topmost(self.window, self.app.state.overlay.player_windows_topmost)
         self.window.configure(bg="#171717")
         self.window.protocol("WM_DELETE_WINDOW", self.close)
         self.app.apply_window_icon(self.window)
@@ -107,7 +107,7 @@ class OverlayWindow:
         self.window.geometry(f"{width}x{height}+100+100")
         self.window.title(self.app.t("overlay.window_title", name=player.name))
         self.window.minsize(60, 60)
-        self.window.attributes("-topmost", True)
+        self.app.apply_topmost(self.window, self.app.state.overlay.fill_windows_topmost)
         self.window.attributes("-alpha", 0.45)
         self.window.configure(bg=TRANSPARENT_KEY)
         self.window.protocol("WM_DELETE_WINDOW", self.close)
@@ -363,6 +363,8 @@ class HealthPointsApp:
         self.locale_display_var = tk.StringVar(value=self.localizer.locale_name(self.state.locale))
         self.overlay_ratio_var = tk.StringVar(value=self.state.overlay.aspect_ratio)
         self.overlay_show_title_var = tk.BooleanVar(value=self.state.overlay.show_title)
+        self.player_windows_topmost_var = tk.BooleanVar(value=self.state.overlay.player_windows_topmost)
+        self.fill_windows_topmost_var = tk.BooleanVar(value=self.state.overlay.fill_windows_topmost)
         self.layout_mode = ""
         self.sync_after_id: str | None = None
         self.sync_fetch_in_progress = False
@@ -391,6 +393,12 @@ class HealthPointsApp:
 
     def sync_mode_active(self) -> bool:
         return bool(self.state.sync.enabled)
+
+    def apply_topmost(self, window: tk.Misc, enabled: bool) -> None:
+        try:
+            window.attributes("-topmost", enabled)
+        except tk.TclError:
+            return
 
     def right_panel_visible(self) -> bool:
         return bool(self.state.sync.visible or self.state.overlay.panel_visible)
@@ -595,6 +603,21 @@ class HealthPointsApp:
         self.overlay_title_check = ttk.Checkbutton(card, variable=self.overlay_show_title_var, command=self.save_overlay_settings)
         self.overlay_title_check.grid(row=1, column=0, columnspan=2, sticky="w", pady=(12, 0))
 
+        self.window_behavior_label = ttk.Label(card)
+        self.window_behavior_label.grid(row=2, column=0, columnspan=2, sticky="w", pady=(14, 0))
+        self.player_windows_topmost_check = ttk.Checkbutton(
+            card,
+            variable=self.player_windows_topmost_var,
+            command=self.save_overlay_settings,
+        )
+        self.player_windows_topmost_check.grid(row=3, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        self.fill_windows_topmost_check = ttk.Checkbutton(
+            card,
+            variable=self.fill_windows_topmost_var,
+            command=self.save_overlay_settings,
+        )
+        self.fill_windows_topmost_check.grid(row=4, column=0, columnspan=2, sticky="w", pady=(8, 0))
+
     def _build_status_bar(self, parent: ttk.Frame) -> None:
         ttk.Label(parent, textvariable=self.status_var, style="Muted.TLabel").grid(row=3, column=0, columnspan=2, sticky="ew", pady=(14, 0))
 
@@ -655,14 +678,27 @@ class HealthPointsApp:
     def save_overlay_settings(self, _event: tk.Event | None = None) -> None:
         self.state.overlay.aspect_ratio = self.overlay_ratio_code_from_label(self.overlay_ratio_var.get())
         self.state.overlay.show_title = self.overlay_show_title_var.get()
+        self.state.overlay.player_windows_topmost = self.player_windows_topmost_var.get()
+        self.state.overlay.fill_windows_topmost = self.fill_windows_topmost_var.get()
         save_state(self.state)
+        self.refresh_player_windows()
         self.refresh_overlay_windows()
+        self.status_var.set(self.t("status.overlay_settings_saved"))
+
+    def refresh_player_windows(self) -> None:
+        for player_id, player_window in list(self.player_windows.items()):
+            player = self.player_by_id(player_id)
+            if player is None:
+                continue
+            self.apply_topmost(player_window.window, self.state.overlay.player_windows_topmost)
+            player_window.refresh(player)
 
     def refresh_overlay_windows(self) -> None:
         for player_id, overlay in list(self.overlay_windows.items()):
             player = self.player_by_id(player_id)
             if player is None:
                 continue
+            self.apply_topmost(overlay.window, self.state.overlay.fill_windows_topmost)
             base = self.overlay_base_from_size(overlay.window.winfo_width(), overlay.window.winfo_height())
             width, height = self.overlay_dimensions(base)
             overlay.window.geometry(f"{width}x{height}+{overlay.window.winfo_x()}+{overlay.window.winfo_y()}")
@@ -742,6 +778,7 @@ class HealthPointsApp:
         )
         self.overlay_settings_card.config(text=self.t("card.overlay_settings"))
         self.overlay_ratio_label.config(text=self.t("label.overlay_ratio"))
+        self.window_behavior_label.config(text=self.t("label.window_behavior"))
         self.overlay_ratio_combo.config(
             values=[
                 self.t("overlay.aspect.1:1"),
@@ -752,6 +789,10 @@ class HealthPointsApp:
         self.overlay_ratio_combo.set(self.t(f"overlay.aspect.{self.state.overlay.aspect_ratio}"))
         self.overlay_title_check.config(text=self.t("overlay.show_title"))
         self.overlay_show_title_var.set(self.state.overlay.show_title)
+        self.player_windows_topmost_check.config(text=self.t("overlay.player_windows_topmost"))
+        self.fill_windows_topmost_check.config(text=self.t("overlay.fill_windows_topmost"))
+        self.player_windows_topmost_var.set(self.state.overlay.player_windows_topmost)
+        self.fill_windows_topmost_var.set(self.state.overlay.fill_windows_topmost)
         if self.state.sync.visible:
             self.sync_card.grid()
         else:

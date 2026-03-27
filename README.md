@@ -7,7 +7,7 @@ Desktop HealthPoints manager for DnD-like games, built with Python and `tkinter`
 - Main dashboard for adding and removing players
 - Per-player HP controls for damage, healing, and direct edits
 - Detachable floating player windows for OBS capture
-- Optional floating portrait overlay windows that fill red as HP drops
+- Optional floating portrait fill windows that fill red as HP drops
 - Centralized UI localization with English and Russian support
 - Local JSON persistence between launches
 - Google Doc sync via link-based text fetching
@@ -67,6 +67,6 @@ You can also hide the sync preview entirely from the main window; that visibilit
 
 When sync mode itself is enabled, manual HP controls are hidden. That means the add-player form and per-player manual HP editing actions disappear, while display-oriented OBS windows and fills remain available. The delete button also remains available in sync mode so players can still be removed from the dashboard.
 
-There is also a hidden-by-default fill settings panel. From there you can choose whether portrait fills render as `1:1`, `4:3`, or `3:4`, and whether the character name is shown above the fill. Those settings are saved between launches as well.
+There is also a hidden-by-default fill settings panel. From there you can choose whether portrait fills render as `1:1`, `4:3`, or `3:4`, whether the character name is shown above the fill, and whether spawned player/fill windows stay above other applications or can sit behind them for OBS-only capture. Those settings are saved between launches as well.
 
 Portrait fills open as normal standalone windows so they can be targeted more reliably by OBS window capture.
