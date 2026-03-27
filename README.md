@@ -6,7 +6,7 @@ Desktop HealthPoints manager for DnD-like games, built with Python and `tkinter`
 
 - Main dashboard for adding and removing players
 - Per-player HP controls for damage, healing, and direct edits
-- Party money tracking with `cc`, `sc`, and `gc`
+- Per-player money tracking with `cc`, `sc`, and `gc`
 - Per-player spell slot tracking for levels I-VI
 - Detachable floating player windows for OBS capture
 - Standalone money and spell slot windows for OBS capture
@@ -42,14 +42,14 @@ When you package the app into a directory build, keep the `assets` folder next t
 
 ## Sync format
 
-The parser only reads lines placed between `>>>` markers. Inside those blocks you can use `[HP]`, `[MONEY]`, and `[SPELL_SLOTS: Name]` sections:
+The parser only reads lines placed between `>>>` markers. Inside those blocks you can use `[HP]`, `[MONEY: Name]`, and `[SPELL_SLOTS: Name]` sections:
 
 ```text
 >>>
 [HP]
 Name: current_hp/max_hp(temp_hp)
 
-[MONEY]
+[MONEY: Cyra Vale]
 cc: 12
 sc: 7
 gc: 42
@@ -75,7 +75,7 @@ Aela Swift: 18/24
 Borin Spencer: 7/31 (5)
 Cyra Vale: 2/16
 
-[MONEY]
+[MONEY: Cyra Vale]
 cc: 12
 sc: 7
 gc: 42
@@ -95,7 +95,7 @@ If temp HP is omitted, it defaults to `0`. Text outside those marker blocks is i
 The parser accepts both EN and RU section aliases:
 
 - `[HP]` / `[ХП]`
-- `[MONEY]` / `[ДЕНЬГИ]`
+- `[MONEY: Name]` / `[ДЕНЬГИ: Имя]`
 - `[SPELL_SLOTS: Name]` / `[ЯЧЕЙКИ_ЗАКЛИНАНИЙ: Name]`
 
 Money aliases are:
@@ -115,7 +115,7 @@ You can also enable an option that updates only existing players from sync data.
 
 You can also hide the sync preview entirely from the main window; that visibility state is saved between launches.
 
-When sync mode itself is enabled, manual editing controls are hidden. That means the add-player form, party money edits, and per-player manual HP/spell slot editing actions disappear, while display-oriented OBS windows and fills remain available. The delete button also remains available in sync mode so players can still be removed from the dashboard.
+When sync mode itself is enabled, manual editing controls are hidden. That means the add-player form and per-player manual HP/money/spell slot editing actions disappear, while display-oriented OBS windows and fills remain available. The delete button also remains available in sync mode so players can still be removed from the dashboard.
 
 There is also a hidden-by-default fill settings panel. From there you can choose whether portrait fills render as `1:1`, `4:3`, or `3:4`, whether the character name is shown above the fill, and whether spawned player/fill windows stay above other applications or can sit behind them for OBS-only capture. Those settings are saved between launches as well.
 

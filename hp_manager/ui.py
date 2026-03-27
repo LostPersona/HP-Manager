@@ -173,8 +173,9 @@ class OverlayWindow:
 
 
 class MoneyWindow:
-    def __init__(self, app: "HealthPointsApp") -> None:
+    def __init__(self, app: "HealthPointsApp", player: Player) -> None:
         self.app = app
+        self.player_id = player.player_id
         self.window = tk.Toplevel(app.root)
         self.window.geometry("420x180")
         self.window.minsize(320, 140)
@@ -201,12 +202,12 @@ class MoneyWindow:
             self.value_labels[key] = value
             self.name_labels[key] = name
 
-        self.refresh()
+        self.refresh(player)
 
-    def refresh(self) -> None:
-        self.window.title(self.app.t("money.window_title"))
-        self.title_label.config(text=self.app.t("money.window_title"))
-        money = self.app.state.money
+    def refresh(self, player: Player) -> None:
+        self.window.title(self.app.t("money.window_title", name=player.name))
+        self.title_label.config(text=self.app.t("money.window_title", name=player.name))
+        money = player.money
         self.value_labels["cc"].config(text=str(money.cc))
         self.value_labels["sc"].config(text=str(money.sc))
         self.value_labels["gc"].config(text=str(money.gc))
@@ -217,7 +218,79 @@ class MoneyWindow:
     def close(self) -> None:
         if self.window.winfo_exists():
             self.window.destroy()
-        self.app.unregister_money_window()
+        self.app.unregister_money_window(self.player_id)
+
+
+class MoneyEditorWindow:
+    def __init__(self, app: "HealthPointsApp", player: Player) -> None:
+        self.app = app
+        self.player_id = player.player_id
+        self.window = tk.Toplevel(app.root)
+        self.window.geometry("360x220")
+        self.window.minsize(320, 200)
+        self.window.configure(bg="#101214")
+        self.window.protocol("WM_DELETE_WINDOW", self.close)
+        self.app.apply_window_icon(self.window)
+
+        self.title_label = ttk.Label(self.window, style="Header.TLabel")
+        self.title_label.pack(anchor="w", padx=16, pady=(16, 12))
+
+        content = ttk.Frame(self.window, padding=(16, 0, 16, 16))
+        content.pack(fill="both", expand=True)
+        for column in range(3):
+            content.columnconfigure(column, weight=1)
+
+        self.money_labels: dict[str, ttk.Label] = {}
+        self.money_vars: dict[str, tk.StringVar] = {}
+        for column, key in enumerate(("cc", "sc", "gc")):
+            label = ttk.Label(content)
+            label.grid(row=0, column=column, sticky="w", padx=(0 if column == 0 else 8, 0))
+            var = tk.StringVar()
+            ttk.Entry(content, textvariable=var, width=8).grid(
+                row=1,
+                column=column,
+                sticky="ew",
+                padx=((0, 8) if column == 0 else (8, 8) if column == 1 else (8, 0)),
+                pady=(4, 0),
+            )
+            self.money_labels[key] = label
+            self.money_vars[key] = var
+
+        button_row = ttk.Frame(content)
+        button_row.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(16, 0))
+        button_row.columnconfigure(0, weight=1)
+        button_row.columnconfigure(1, weight=1)
+        self.save_button = ttk.Button(button_row, command=self.save)
+        self.save_button.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        self.close_button = ttk.Button(button_row, command=self.close)
+        self.close_button.grid(row=0, column=1, sticky="ew")
+
+        self.refresh(player)
+
+    def refresh(self, player: Player) -> None:
+        self.window.title(self.app.t("money.editor_title", name=player.name))
+        self.title_label.config(text=self.app.t("money.editor_title", name=player.name))
+        self.money_labels["cc"].config(text=self.app.t("money.cc"))
+        self.money_labels["sc"].config(text=self.app.t("money.sc"))
+        self.money_labels["gc"].config(text=self.app.t("money.gc"))
+        self.money_vars["cc"].set(str(player.money.cc))
+        self.money_vars["sc"].set(str(player.money.sc))
+        self.money_vars["gc"].set(str(player.money.gc))
+        self.save_button.config(text=self.app.t("action.apply"))
+        self.close_button.config(text=self.app.t("action.close"))
+
+    def save(self) -> None:
+        player = self.app.player_by_id(self.player_id)
+        if player is None:
+            self.close()
+            return
+        player.set_money(self.money_vars["cc"].get(), self.money_vars["sc"].get(), self.money_vars["gc"].get())
+        self.app.persist_and_refresh(status=self.app.t("status.money_saved", name=player.name))
+
+    def close(self) -> None:
+        if self.window.winfo_exists():
+            self.window.destroy()
+        self.app.unregister_money_editor(self.player_id)
 
 
 class SpellSlotsWindow:
@@ -388,6 +461,7 @@ class PlayerRow:
         self.viewer_actions.columnconfigure(0, weight=1)
         self.viewer_actions.columnconfigure(1, weight=1)
         self.viewer_actions.columnconfigure(2, weight=1)
+        self.viewer_actions.columnconfigure(3, weight=1)
 
         self.summary_label = ttk.Label(self.frame, anchor="w")
         self.summary_label.grid(row=1, column=0, sticky="ew", pady=(8, 0))
@@ -422,7 +496,7 @@ class PlayerRow:
 
         self.actions_secondary = ttk.Frame(self.frame, style="Card.TFrame")
         self.actions_secondary.grid(row=4, column=0, sticky="ew", pady=(8, 0))
-        for column in range(2):
+        for column in range(3):
             self.actions_secondary.columnconfigure(column, weight=1)
 
         self.damage_button = ttk.Button(self.actions_primary, command=self.damage)
@@ -437,12 +511,16 @@ class PlayerRow:
         self.overlay_button = ttk.Button(self.viewer_actions, command=self.toggle_overlay)
         self.overlay_button.grid(row=0, column=1, sticky="ew", padx=8)
         self.spell_window_button = ttk.Button(self.viewer_actions, command=self.toggle_spell_window)
-        self.spell_window_button.grid(row=0, column=2, sticky="ew")
+        self.spell_window_button.grid(row=0, column=2, sticky="ew", padx=8)
+        self.money_window_button = ttk.Button(self.viewer_actions, command=self.toggle_money_window)
+        self.money_window_button.grid(row=0, column=3, sticky="ew")
 
+        self.money_edit_button = ttk.Button(self.actions_secondary, command=self.edit_money)
+        self.money_edit_button.grid(row=0, column=0, sticky="ew", padx=(0, 8))
         self.spell_edit_button = ttk.Button(self.actions_secondary, command=self.edit_spell_slots)
-        self.spell_edit_button.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        self.spell_edit_button.grid(row=0, column=1, sticky="ew", padx=8)
         self.remove_button = ttk.Button(self.actions_secondary, command=self.remove_player)
-        self.remove_button.grid(row=0, column=1, sticky="ew")
+        self.remove_button.grid(row=0, column=2, sticky="ew")
 
         self.refresh(player)
 
@@ -479,8 +557,14 @@ class PlayerRow:
     def toggle_spell_window(self) -> None:
         self.app.toggle_spell_window(self.player_id)
 
+    def toggle_money_window(self) -> None:
+        self.app.toggle_money_window(self.player_id)
+
     def edit_spell_slots(self) -> None:
         self.app.open_spell_editor(self.player_id)
+
+    def edit_money(self) -> None:
+        self.app.open_money_editor(self.player_id)
 
     def remove_player(self) -> None:
         self.app.remove_player(self.player_id)
@@ -514,8 +598,9 @@ class PlayerRow:
             self.stats_frame.grid_remove()
             self.actions_primary.grid_remove()
             self.actions_secondary.grid()
+            self.money_edit_button.grid_remove()
             self.spell_edit_button.grid_remove()
-            self.remove_button.grid(row=0, column=0, columnspan=2, sticky="ew")
+            self.remove_button.grid(row=0, column=0, columnspan=3, sticky="ew")
         else:
             self.name_value_label.grid_remove()
             self.name_label.grid()
@@ -523,8 +608,9 @@ class PlayerRow:
             self.stats_frame.grid()
             self.actions_primary.grid()
             self.actions_secondary.grid()
+            self.money_edit_button.grid()
             self.spell_edit_button.grid()
-            self.remove_button.grid(row=0, column=1, columnspan=1, sticky="ew")
+            self.remove_button.grid(row=0, column=2, columnspan=1, sticky="ew")
 
         self.window_button.config(
             text=self.app.t("action.hide_window") if self.player_id in self.app.player_windows else self.app.t("action.player_window")
@@ -537,10 +623,16 @@ class PlayerRow:
             if self.player_id in self.app.spell_windows
             else self.app.t("action.spell_window")
         )
+        self.money_window_button.config(
+            text=self.app.t("action.hide_money_window")
+            if self.player_id in self.app.money_windows
+            else self.app.t("action.money_window")
+        )
         self.save_button.config(text=self.app.t("action.apply"))
         self.remove_button.config(text=self.app.t("action.remove"))
         self.damage_button.config(text=self.app.t("action.damage"))
         self.heal_button.config(text=self.app.t("action.heal"))
+        self.money_edit_button.config(text=self.app.t("action.edit_money"))
         self.spell_edit_button.config(text=self.app.t("action.edit_spell_slots"))
 
     def destroy(self) -> None:
@@ -561,18 +653,16 @@ class HealthPointsApp:
         self.player_rows: dict[str, PlayerRow] = {}
         self.player_windows: dict[str, PlayerWindow] = {}
         self.overlay_windows: dict[str, OverlayWindow] = {}
+        self.money_windows: dict[str, MoneyWindow] = {}
+        self.money_editors: dict[str, MoneyEditorWindow] = {}
         self.spell_windows: dict[str, SpellSlotsWindow] = {}
         self.spell_editors: dict[str, SpellSlotsEditorWindow] = {}
-        self.money_window: MoneyWindow | None = None
 
         self.status_var = tk.StringVar(value=self.t("status.ready"))
         self.add_name_var = tk.StringVar()
         self.add_current_var = tk.StringVar(value="10")
         self.add_max_var = tk.StringVar(value="10")
         self.add_temp_var = tk.StringVar(value="0")
-        self.money_cc_var = tk.StringVar(value=str(self.state.money.cc))
-        self.money_sc_var = tk.StringVar(value=str(self.state.money.sc))
-        self.money_gc_var = tk.StringVar(value=str(self.state.money.gc))
         self.sync_enabled_var = tk.BooleanVar(value=self.state.sync.enabled)
         self.sync_source_var = tk.StringVar(value=self.state.sync.source)
         self.sync_poll_var = tk.StringVar(value=str(self.state.sync.poll_seconds))
@@ -700,7 +790,7 @@ class HealthPointsApp:
         self.settings_toggle_button.grid(row=3, column=0, columnspan=2, sticky="e", pady=(8, 0))
 
         left = ttk.Frame(container)
-        left.rowconfigure(2, weight=1)
+        left.rowconfigure(1, weight=1)
         left.columnconfigure(0, weight=1)
         self.left_panel = left
 
@@ -711,7 +801,6 @@ class HealthPointsApp:
         self.right_panel = right
 
         self._build_add_player_card(left)
-        self._build_money_card(left)
         self._build_players_card(left)
         self._build_sync_card(right)
         self._build_overlay_settings_card(right)
@@ -744,44 +833,9 @@ class HealthPointsApp:
         self.add_player_button = ttk.Button(card, command=self.add_player)
         self.add_player_button.grid(row=3, column=0, columnspan=4, sticky="ew", pady=(12, 0))
 
-    def _build_money_card(self, parent: ttk.Frame) -> None:
-        card = ttk.Frame(parent, style="Card.TFrame", padding=14)
-        card.grid(row=1, column=0, sticky="ew", pady=(16, 0))
-        self.money_card = card
-        for column in range(3):
-            card.columnconfigure(column, weight=1)
-
-        self.money_title_label = ttk.Label(card, style="CardTitle.TLabel")
-        self.money_title_label.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 10))
-        self.money_summary_label = ttk.Label(card, style="Muted.TLabel")
-        self.money_summary_label.grid(row=1, column=0, columnspan=3, sticky="w", pady=(0, 10))
-
-        self.money_cc_label = ttk.Label(card)
-        self.money_cc_label.grid(row=2, column=0, sticky="w")
-        self.money_sc_label = ttk.Label(card)
-        self.money_sc_label.grid(row=2, column=1, sticky="w")
-        self.money_gc_label = ttk.Label(card)
-        self.money_gc_label.grid(row=2, column=2, sticky="w")
-
-        self.money_cc_entry = ttk.Entry(card, textvariable=self.money_cc_var, width=8)
-        self.money_cc_entry.grid(row=3, column=0, sticky="ew", padx=(0, 8))
-        self.money_sc_entry = ttk.Entry(card, textvariable=self.money_sc_var, width=8)
-        self.money_sc_entry.grid(row=3, column=1, sticky="ew", padx=4)
-        self.money_gc_entry = ttk.Entry(card, textvariable=self.money_gc_var, width=8)
-        self.money_gc_entry.grid(row=3, column=2, sticky="ew", padx=(8, 0))
-
-        button_row = ttk.Frame(card, style="Card.TFrame")
-        button_row.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(12, 0))
-        button_row.columnconfigure(0, weight=1)
-        button_row.columnconfigure(1, weight=1)
-        self.money_apply_button = ttk.Button(button_row, command=self.apply_money_edits)
-        self.money_apply_button.grid(row=0, column=0, sticky="ew", padx=(0, 8))
-        self.money_window_button = ttk.Button(button_row, command=self.toggle_money_window)
-        self.money_window_button.grid(row=0, column=1, sticky="ew")
-
     def _build_players_card(self, parent: ttk.Frame) -> None:
         card = ttk.LabelFrame(parent, style="Section.TLabelframe", padding=10)
-        card.grid(row=2, column=0, sticky="nsew", pady=(16, 0))
+        card.grid(row=1, column=0, sticky="nsew", pady=(16, 0))
         card.rowconfigure(1, weight=1)
         card.columnconfigure(0, weight=1)
         self.players_card = card
@@ -964,9 +1018,12 @@ class HealthPointsApp:
             overlay.refresh(player)
 
     def refresh_money_window(self) -> None:
-        if self.money_window and self.money_window.window.winfo_exists():
-            self.apply_topmost(self.money_window.window, self.state.overlay.player_windows_topmost)
-            self.money_window.refresh()
+        for player_id, money_window in list(self.money_windows.items()):
+            player = self.player_by_id(player_id)
+            if player is None:
+                continue
+            self.apply_topmost(money_window.window, self.state.overlay.player_windows_topmost)
+            money_window.refresh(player)
 
     def refresh_spell_windows(self) -> None:
         for player_id, spell_window in list(self.spell_windows.items()):
@@ -984,20 +1041,51 @@ class HealthPointsApp:
                 continue
             editor.refresh(player)
 
-    def toggle_money_window(self) -> None:
-        if self.money_window and self.money_window.window.winfo_exists():
-            self.money_window.close()
+    def refresh_money_editors(self) -> None:
+        for player_id, editor in list(self.money_editors.items()):
+            player = self.player_by_id(player_id)
+            if player is None:
+                editor.close()
+                continue
+            editor.refresh(player)
+
+    def toggle_money_window(self, player_id: str) -> None:
+        if player_id in self.money_windows:
+            self.close_money_window(player_id)
         else:
-            self.money_window = MoneyWindow(self)
+            player = self.player_by_id(player_id)
+            if player:
+                self.money_windows[player_id] = MoneyWindow(self, player)
         self.refresh_all()
 
-    def unregister_money_window(self) -> None:
-        self.money_window = None
+    def close_money_window(self, player_id: str) -> None:
+        money_window = self.money_windows.pop(player_id, None)
+        if money_window and money_window.window.winfo_exists():
+            money_window.window.destroy()
+
+    def unregister_money_window(self, player_id: str) -> None:
+        self.money_windows.pop(player_id, None)
         self.refresh_all()
 
-    def apply_money_edits(self) -> None:
-        self.state.money.set_counts(self.money_cc_var.get(), self.money_sc_var.get(), self.money_gc_var.get())
-        self.persist_and_refresh(status=self.t("status.money_saved"))
+    def open_money_editor(self, player_id: str) -> None:
+        if self.sync_mode_active():
+            return
+        if player_id in self.money_editors:
+            editor = self.money_editors[player_id]
+            if editor.window.winfo_exists():
+                editor.window.lift()
+                return
+        player = self.player_by_id(player_id)
+        if player:
+            self.money_editors[player_id] = MoneyEditorWindow(self, player)
+
+    def close_money_editor(self, player_id: str) -> None:
+        editor = self.money_editors.pop(player_id, None)
+        if editor and editor.window.winfo_exists():
+            editor.window.destroy()
+
+    def unregister_money_editor(self, player_id: str) -> None:
+        self.money_editors.pop(player_id, None)
 
     def toggle_spell_window(self, player_id: str) -> None:
         if player_id in self.spell_windows:
@@ -1092,16 +1180,6 @@ class HealthPointsApp:
         self.add_temp_label.config(text=self.t("label.temp"))
         self.add_player_button.config(text=self.t("action.add_to_dashboard"))
 
-        self.money_title_label.config(text=self.t("card.money"))
-        self.money_cc_label.config(text=self.t("money.cc"))
-        self.money_sc_label.config(text=self.t("money.sc"))
-        self.money_gc_label.config(text=self.t("money.gc"))
-        self.money_apply_button.config(text=self.t("action.apply"))
-        self.money_window_button.config(
-            text=self.t("action.hide_money_window") if self.money_window else self.t("action.money_window")
-        )
-        self.money_summary_label.config(text=self.t("money.summary", cc=self.state.money.cc, sc=self.state.money.sc, gc=self.state.money.gc))
-
         self.players_card.config(text=self.t("card.players"))
         self.players_header_label.config(text=self.t("players.header"))
 
@@ -1151,26 +1229,12 @@ class HealthPointsApp:
     def refresh_sync_mode_visibility(self) -> None:
         if self.sync_mode_active():
             self.add_player_card.grid_remove()
-            self.money_cc_label.grid_remove()
-            self.money_sc_label.grid_remove()
-            self.money_gc_label.grid_remove()
-            self.money_cc_entry.grid_remove()
-            self.money_sc_entry.grid_remove()
-            self.money_gc_entry.grid_remove()
-            self.money_apply_button.grid_remove()
-            self.money_window_button.grid(row=0, column=0, columnspan=2, sticky="ew")
+            for player_id in list(self.money_editors):
+                self.close_money_editor(player_id)
             for player_id in list(self.spell_editors):
                 self.close_spell_editor(player_id)
         else:
             self.add_player_card.grid()
-            self.money_cc_label.grid()
-            self.money_sc_label.grid()
-            self.money_gc_label.grid()
-            self.money_cc_entry.grid()
-            self.money_sc_entry.grid()
-            self.money_gc_entry.grid()
-            self.money_apply_button.grid()
-            self.money_window_button.grid(row=0, column=1, columnspan=1, sticky="ew")
 
     def add_player(self) -> None:
         player = Player(
@@ -1192,6 +1256,8 @@ class HealthPointsApp:
             return
         self.close_player_window(player_id)
         self.close_overlay(player_id)
+        self.close_money_window(player_id)
+        self.close_money_editor(player_id)
         self.close_spell_window(player_id)
         self.close_spell_editor(player_id)
         self.state.players = [item for item in self.state.players if item.player_id != player_id]
@@ -1412,8 +1478,12 @@ class HealthPointsApp:
                 match.set_temp_hp(line.temp_hp)
             applied += 1
 
-        if parsed.money is not None:
-            self.state.money.set_counts(parsed.money.get("cc", 0), parsed.money.get("sc", 0), parsed.money.get("gc", 0))
+        for section in parsed.money_sections:
+            match = self._find_player_by_name(section.name)
+            if match is None:
+                skipped += 1
+                continue
+            match.set_money(section.money.get("cc", 0), section.money.get("sc", 0), section.money.get("gc", 0))
             applied += 1
 
         for section in parsed.spell_sections:
@@ -1434,7 +1504,7 @@ class HealthPointsApp:
             "Borin Spencer: 7/31 (5)\n"
             "Cyra Vale: 2/16\n"
             "\n"
-            "[MONEY]\n"
+            "[MONEY: Cyra Vale]\n"
             "cc: 12\n"
             "sc: 7\n"
             "gc: 42\n"
@@ -1470,20 +1540,18 @@ class HealthPointsApp:
         for stale_id in list(self.overlay_windows):
             if stale_id not in existing_ids:
                 self.close_overlay(stale_id)
+        for stale_id in list(self.money_windows):
+            if stale_id not in existing_ids:
+                self.close_money_window(stale_id)
+        for stale_id in list(self.money_editors):
+            if stale_id not in existing_ids:
+                self.close_money_editor(stale_id)
         for stale_id in list(self.spell_windows):
             if stale_id not in existing_ids:
                 self.close_spell_window(stale_id)
         for stale_id in list(self.spell_editors):
             if stale_id not in existing_ids:
                 self.close_spell_editor(stale_id)
-
-        self.money_cc_var.set(str(self.state.money.cc))
-        self.money_sc_var.set(str(self.state.money.sc))
-        self.money_gc_var.set(str(self.state.money.gc))
-        self.money_summary_label.config(text=self.t("money.summary", cc=self.state.money.cc, sc=self.state.money.sc, gc=self.state.money.gc))
-        self.money_window_button.config(
-            text=self.t("action.hide_money_window") if self.money_window else self.t("action.money_window")
-        )
 
         for player in self.state.players:
             row = self.player_rows.get(player.player_id)
@@ -1497,12 +1565,17 @@ class HealthPointsApp:
                 self.player_windows[player.player_id].refresh(player)
             if player.player_id in self.overlay_windows:
                 self.overlay_windows[player.player_id].refresh(player)
+            if player.player_id in self.money_windows:
+                self.money_windows[player.player_id].refresh(player)
+            if player.player_id in self.money_editors:
+                self.money_editors[player.player_id].refresh(player)
             if player.player_id in self.spell_windows:
                 self.spell_windows[player.player_id].refresh(player)
             if player.player_id in self.spell_editors:
                 self.spell_editors[player.player_id].refresh(player)
 
         self.refresh_money_window()
+        self.refresh_money_editors()
         self._on_rows_configure()
 
     def on_close(self) -> None:
