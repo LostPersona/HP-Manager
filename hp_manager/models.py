@@ -240,6 +240,7 @@ class OverlaySettings:
     money_font_size: int = 24
     spell_level_font_size: int = 32
     spell_font_size: int = 24
+    spell_cell_scale: int = 100
 
     @staticmethod
     def valid_aspect_ratios() -> set[str]:
@@ -261,6 +262,10 @@ class OverlaySettings:
     def clean_value_font_size(value: int | str | None, default: int) -> int:
         return max(12, min(72, _clean_int(value, default)))
 
+    @staticmethod
+    def clean_spell_cell_scale(value: int | str | None) -> int:
+        return max(80, min(200, _clean_int(value, 100)))
+
     def to_dict(self) -> dict[str, bool | int | str]:
         return {
             "aspect_ratio": self.aspect_ratio if self.aspect_ratio in self.valid_aspect_ratios() else "1:1",
@@ -276,6 +281,7 @@ class OverlaySettings:
             "money_font_size": self.clean_value_font_size(self.money_font_size, 24),
             "spell_level_font_size": self.clean_value_font_size(self.spell_level_font_size, 32),
             "spell_font_size": self.clean_value_font_size(self.spell_font_size, 24),
+            "spell_cell_scale": self.clean_spell_cell_scale(self.spell_cell_scale),
         }
 
     @classmethod
@@ -305,6 +311,7 @@ class OverlaySettings:
             money_font_size=cls.clean_value_font_size(data.get("money_font_size"), 24),
             spell_level_font_size=cls.clean_value_font_size(data.get("spell_level_font_size"), 32),
             spell_font_size=cls.clean_value_font_size(data.get("spell_font_size"), 24),
+            spell_cell_scale=cls.clean_spell_cell_scale(data.get("spell_cell_scale")),
         )
 
 
