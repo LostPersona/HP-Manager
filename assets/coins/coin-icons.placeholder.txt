@@ -1,0 +1,8 @@
+Place custom coin images here with these exact names:
+
+- cc.png
+- sc.png
+- gc.png
+
+The money windows will show the image on the left and the value on the right.
+If these files are missing, the app falls back to built-in coin badges.

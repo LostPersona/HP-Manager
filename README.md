@@ -40,6 +40,16 @@ There is a placeholder note at `assets/app.ico.placeholder.txt`. Replace it with
 
 When you package the app into a directory build, keep the `assets` folder next to the `.exe`. The state JSON will also be stored next to the `.exe`, which makes the app portable for non-technical users.
 
+For custom money icons, place these files in:
+
+```text
+assets/coins/cc.png
+assets/coins/sc.png
+assets/coins/gc.png
+```
+
+The money windows will show the coin image on the left and the corresponding amount on the right. If those files are missing, the app falls back to built-in coin badges.
+
 ## Sync format
 
 The parser only reads lines placed between `>>>` markers. Inside those blocks you can use `[HP]`, `[MONEY: Name]`, and `[SPELL_SLOTS: Name]` sections:
