@@ -1,6 +1,6 @@
-# More than HP Manager by LostPersona
+# More than HP Manager
 
-`More than HP Manager by LostPersona` is a desktop companion app for DnD-like and other TTRPG games. It started as an HP tracker, but the current project goes further: it can manage per-character health, coins, spell slots, and multiple OBS-friendly display windows from a single bilingual dashboard.
+`More than HP Manager` is a desktop companion app for DnD-like and other TTRPG games. It started as an HP tracker, but the current project goes further: it can manage per-character health, coins, spell slots, and multiple OBS-friendly display windows from a single bilingual dashboard.
 
 Built with Python and `tkinter`, it is designed for GMs, streamers, and groups that want a lightweight local tool without needing a web app.
 
