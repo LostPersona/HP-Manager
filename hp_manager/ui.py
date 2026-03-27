@@ -21,6 +21,12 @@ TRANSPARENT_KEY = "#00ff00"
 ICON_PATH = asset_path("app.ico")
 OVERLAY_TITLE_HEIGHT = 30
 WINDOWS_APP_ID = "LostPersona.HPManager"
+WM_SETICON = 0x0080
+ICON_SMALL = 0
+ICON_BIG = 1
+IMAGE_ICON = 1
+LR_LOADFROMFILE = 0x0010
+LR_DEFAULTSIZE = 0x0040
 
 
 def _hp_text_color(ratio: float) -> str:
@@ -46,6 +52,39 @@ def _set_windows_app_id() -> None:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(WINDOWS_APP_ID)
     except (AttributeError, OSError):
         return
+
+
+def _set_native_windows_icon(window: tk.Misc, icon_path: Path) -> None:
+    if sys.platform != "win32":
+        return
+
+    try:
+        hwnd = window.winfo_id()
+    except tk.TclError:
+        return
+
+    user32 = ctypes.windll.user32
+    hicon_big = user32.LoadImageW(
+        None,
+        str(icon_path),
+        IMAGE_ICON,
+        0,
+        0,
+        LR_LOADFROMFILE | LR_DEFAULTSIZE,
+    )
+    hicon_small = user32.LoadImageW(
+        None,
+        str(icon_path),
+        IMAGE_ICON,
+        16,
+        16,
+        LR_LOADFROMFILE,
+    )
+
+    if hicon_big:
+        user32.SendMessageW(hwnd, WM_SETICON, ICON_BIG, hicon_big)
+    if hicon_small:
+        user32.SendMessageW(hwnd, WM_SETICON, ICON_SMALL, hicon_small)
 
 
 class PlayerWindow:
@@ -387,7 +426,12 @@ class HealthPointsApp:
             window.iconbitmap(icon_path)
             window.iconbitmap(default=icon_path)
         except tk.TclError:
+            pass
+        try:
+            window.update_idletasks()
+        except tk.TclError:
             return
+        _set_native_windows_icon(window, ICON_PATH.resolve())
 
     def sync_mode_active(self) -> bool:
         return bool(self.state.sync.enabled)
