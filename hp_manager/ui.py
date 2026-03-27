@@ -1687,12 +1687,12 @@ class HealthPointsApp:
 
     def _apply_parsed_data(self, parsed: ParsedSyncData) -> tuple[int, int]:
         applied = 0
-        skipped = 0
+        skipped_names: set[str] = set()
         for line in parsed.hp_lines:
             match = self._find_player_by_name(line.name)
             if match is None:
                 if self.state.sync.existing_only:
-                    skipped += 1
+                    skipped_names.add(line.name.casefold())
                     continue
                 self.state.players.append(
                     Player(
@@ -1712,7 +1712,7 @@ class HealthPointsApp:
         for section in parsed.money_sections:
             match = self._find_player_by_name(section.name)
             if match is None:
-                skipped += 1
+                skipped_names.add(section.name.casefold())
                 continue
             match.set_money(section.money.get("cc", 0), section.money.get("sc", 0), section.money.get("gc", 0))
             applied += 1
@@ -1720,28 +1720,29 @@ class HealthPointsApp:
         for section in parsed.spell_sections:
             match = self._find_player_by_name(section.name)
             if match is None:
-                skipped += 1
+                skipped_names.add(section.name.casefold())
                 continue
             match.replace_spell_slots(section.slots)
             applied += 1
 
-        return applied, skipped
+        return applied, len(skipped_names)
 
     def load_sync_example(self) -> None:
         if self.state.locale == "ru":
             example = (
                 ">>>\n"
-                "[ХП]\n"
-                "Аэла Свифт: 18/24\n"
-                "Борин Спенсер: 7/31 (5)\n"
-                "Сайра Вейл: 2/16\n"
+                "Имя: Аэла Свифт\n"
+                "Здоровье: 18/24\n"
+                "Монеты: 4 зм 3 см 1 мм\n"
                 "\n"
-                "[ДЕНЬГИ: Сайра Вейл]\n"
-                "мм: 12\n"
-                "см: 7\n"
-                "зм: 42\n"
+                "Имя: Борин Спенсер\n"
+                "Монеты: 5 зм 0 см 2 мм\n"
+                "Здоровье: 7/31 (5)\n"
                 "\n"
-                "[ЯЧЕЙКИ_ЗАКЛИНАНИЙ: Сайра Вейл]\n"
+                "Имя: Сайра Вейл\n"
+                "Здоровье: 2/16\n"
+                "Монеты: 12 мм 7 см 42 зм\n"
+                "Ячейки заклинаний:\n"
                 "1: 4/4\n"
                 "2: 3/3\n"
                 "3: 2/3\n"
@@ -1756,17 +1757,18 @@ class HealthPointsApp:
         else:
             example = (
                 ">>>\n"
-                "[HP]\n"
-                "Aela Swift: 18/24\n"
-                "Borin Spencer: 7/31 (5)\n"
-                "Cyra Vale: 2/16\n"
+                "Name: Aela Swift\n"
+                "Health: 18/24\n"
+                "Coins: 4 gc 3 sc 1 cc\n"
                 "\n"
-                "[MONEY: Cyra Vale]\n"
-                "cc: 12\n"
-                "sc: 7\n"
-                "gc: 42\n"
+                "Name: Borin Spencer\n"
+                "Coins: 5 gc 0 sc 2 cc\n"
+                "Health: 7/31 (5)\n"
                 "\n"
-                "[SPELL_SLOTS: Cyra Vale]\n"
+                "Name: Cyra Vale\n"
+                "Health: 2/16\n"
+                "Coins: 12 cc 7 sc 42 gc\n"
+                "Spell Slots:\n"
                 "1: 4/4\n"
                 "2: 3/3\n"
                 "3: 2/3\n"
