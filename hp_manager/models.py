@@ -114,9 +114,13 @@ class OverlaySettings:
     show_title: bool = False
     panel_visible: bool = False
 
+    @staticmethod
+    def valid_aspect_ratios() -> set[str]:
+        return {"1:1", "4:3", "3:4"}
+
     def to_dict(self) -> dict[str, bool | str]:
         return {
-            "aspect_ratio": self.aspect_ratio if self.aspect_ratio in {"1:1", "4:3"} else "1:1",
+            "aspect_ratio": self.aspect_ratio if self.aspect_ratio in self.valid_aspect_ratios() else "1:1",
             "show_title": self.show_title,
             "panel_visible": self.panel_visible,
         }
@@ -126,7 +130,7 @@ class OverlaySettings:
         if not data:
             return cls()
         aspect_ratio = str(data.get("aspect_ratio") or "1:1")
-        if aspect_ratio not in {"1:1", "4:3"}:
+        if aspect_ratio not in cls.valid_aspect_ratios():
             aspect_ratio = "1:1"
         return cls(
             aspect_ratio=aspect_ratio,

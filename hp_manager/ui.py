@@ -301,7 +301,7 @@ class PlayerRow:
             self.name_value_label.grid()
             self.stats_frame.grid_remove()
             self.actions_primary.grid_remove()
-            self.actions_secondary.grid_remove()
+            self.actions_secondary.grid()
         else:
             self.name_value_label.grid_remove()
             self.name_label.grid()
@@ -381,11 +381,11 @@ class HealthPointsApp:
         return bool(self.state.sync.visible or self.state.overlay.panel_visible)
 
     def overlay_ratio_label_for_code(self, code: str) -> str:
-        normalized = code if code in {"1:1", "4:3"} else "1:1"
+        normalized = code if code in {"1:1", "4:3", "3:4"} else "1:1"
         return self.t(f"overlay.aspect.{normalized}")
 
     def overlay_ratio_code_from_label(self, label: str) -> str:
-        for code in ("1:1", "4:3"):
+        for code in ("1:1", "4:3", "3:4"):
             if label == self.overlay_ratio_label_for_code(code):
                 return code
         return "1:1"
@@ -395,6 +395,9 @@ class HealthPointsApp:
         if self.state.overlay.aspect_ratio == "4:3":
             width = base
             height = max(45, int(base * 3 / 4))
+        elif self.state.overlay.aspect_ratio == "3:4":
+            width = max(45, int(base * 3 / 4))
+            height = base
         else:
             width = base
             height = base
@@ -406,6 +409,8 @@ class HealthPointsApp:
         content_height = max(20, height - (OVERLAY_TITLE_HEIGHT if self.state.overlay.show_title else 0))
         if self.state.overlay.aspect_ratio == "4:3":
             return max(width, int(content_height * 4 / 3))
+        if self.state.overlay.aspect_ratio == "3:4":
+            return max(height, int(width * 4 / 3), content_height)
         return max(width, content_height)
 
     def _configure_style(self) -> None:
@@ -726,6 +731,7 @@ class HealthPointsApp:
             values=[
                 self.t("overlay.aspect.1:1"),
                 self.t("overlay.aspect.4:3"),
+                self.t("overlay.aspect.3:4"),
             ]
         )
         self.overlay_ratio_combo.set(self.t(f"overlay.aspect.{self.state.overlay.aspect_ratio}"))
