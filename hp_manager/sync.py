@@ -53,7 +53,7 @@ def _iter_sync_block_lines(text: str) -> list[tuple[int, str]]:
 
     for line_number, raw_line in enumerate(text.splitlines(), start=1):
         stripped = raw_line.strip()
-        if stripped == "---":
+        if stripped == ">>>":
             inside_block = not inside_block
             continue
 

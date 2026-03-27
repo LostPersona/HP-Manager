@@ -1021,7 +1021,7 @@ class HealthPointsApp:
         return applied
 
     def load_sync_example(self) -> None:
-        example = "---\nAela Swift: 18/24\nBorin Spencer: 7/31 (5)\nCyra Vale: 2/16\n---\n"
+        example = ">>>\nAela Swift: 18/24\nBorin Spencer: 7/31 (5)\nCyra Vale: 2/16\n>>>\n"
         self.sync_text.delete("1.0", "end")
         self.sync_text.insert("1.0", example)
         self.status_var.set(self.t("status.example_loaded"))
