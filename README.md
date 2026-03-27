@@ -272,3 +272,4 @@ Main files and folders:
 - This project is Windows-friendly first, especially around icon handling and portable packaging.
 - The current sync source is Google Docs text export, not Google Sheets.
 - Google Sheets support was discussed as a future direction, but it is not part of the current implementation.
+- Yes, LLMs were used during the creation of this code.
