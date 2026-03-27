@@ -63,6 +63,8 @@ Paste a Google Doc link into the sync panel and use `Fetch Doc Now`, or enable s
 
 The app currently fetches the document through Google Docs text export, so the document should be readable by the app, for example via a share setting that allows viewing without a private sign-in prompt.
 
+When automatic sync is enabled, temporary fetch failures should not stop polling permanently. The app will keep scheduling the next sync attempt after both successful and failed auto-fetches.
+
 You can also hide the sync preview entirely from the main window; that visibility state is saved between launches.
 
 When sync mode itself is enabled, manual HP controls are hidden. That means the add-player form and per-player manual HP editing actions disappear, while display-oriented OBS windows and fills remain available. The delete button also remains available in sync mode so players can still be removed from the dashboard.

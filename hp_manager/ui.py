@@ -871,7 +871,7 @@ class HealthPointsApp:
         self.overlay_windows.pop(player_id, None)
         self.refresh_all()
 
-    def save_sync_settings(self) -> None:
+    def save_sync_settings(self, refresh_schedule: bool = True) -> None:
         self.state.sync.enabled = self.sync_enabled_var.get()
         self.state.sync.source = self.sync_source_var.get().strip()
         try:
@@ -881,7 +881,8 @@ class HealthPointsApp:
             self.sync_poll_var.set("15")
         self.refresh_sync_mode_visibility()
         self.refresh_all()
-        self.refresh_sync_schedule()
+        if refresh_schedule:
+            self.refresh_sync_schedule()
 
     def refresh_sync_schedule(self) -> None:
         if self.sync_after_id is not None:
@@ -897,7 +898,7 @@ class HealthPointsApp:
         self.fetch_doc_now(auto=True)
 
     def fetch_doc_now(self, auto: bool = False) -> None:
-        self.save_sync_settings()
+        self.save_sync_settings(refresh_schedule=not auto)
         source = self.state.sync.source.strip()
         if not source:
             if not auto:
@@ -905,6 +906,8 @@ class HealthPointsApp:
             return
 
         if self.sync_fetch_in_progress:
+            if auto:
+                self.refresh_sync_schedule()
             return
 
         self.sync_fetch_in_progress = True
@@ -933,6 +936,8 @@ class HealthPointsApp:
         parsed, errors = parse_sync_text(text)
         applied = self._apply_parsed_lines(parsed)
         self.persist_and_refresh()
+        if auto:
+            self.refresh_sync_schedule()
 
         if errors:
             self.status_var.set(self.t("status.sync_applied_with_issues", applied=applied, issues=len(errors)))
@@ -943,6 +948,8 @@ class HealthPointsApp:
 
     def _handle_fetch_failure(self, message: str, auto: bool) -> None:
         self.sync_fetch_in_progress = False
+        if auto:
+            self.refresh_sync_schedule()
         self.status_var.set(self.t("status.fetch_failed", message=message))
         if not auto:
             messagebox.showwarning(self.t("dialog.fetch_failed.title"), message)
