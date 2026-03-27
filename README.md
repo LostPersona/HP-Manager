@@ -6,7 +6,10 @@ Desktop HealthPoints manager for DnD-like games, built with Python and `tkinter`
 
 - Main dashboard for adding and removing players
 - Per-player HP controls for damage, healing, and direct edits
+- Party money tracking with `cc`, `sc`, and `gc`
+- Per-player spell slot tracking for levels I-VI
 - Detachable floating player windows for OBS capture
+- Standalone money and spell slot windows for OBS capture
 - Optional floating portrait fill windows that fill red as HP drops
 - Centralized UI localization with English and Russian support
 - Local JSON persistence between launches
@@ -39,11 +42,25 @@ When you package the app into a directory build, keep the `assets` folder next t
 
 ## Sync format
 
-The parser only reads HP lines placed between `>>>` markers:
+The parser only reads lines placed between `>>>` markers. Inside those blocks you can use `[HP]`, `[MONEY]`, and `[SPELL_SLOTS: Name]` sections:
 
 ```text
 >>>
+[HP]
 Name: current_hp/max_hp(temp_hp)
+
+[MONEY]
+cc: 12
+sc: 7
+gc: 42
+
+[SPELL_SLOTS: Cyra Vale]
+1: 4/4
+2: 3/3
+3: 2/3
+4: 1/1
+5: 0/0
+6: 0/0
 >>>
 ```
 
@@ -51,15 +68,40 @@ Examples:
 
 ```text
 >>>
+[HP]
 Artem: 32/45
 Artem: 32/45 (10)
 Aela Swift: 18/24
 Borin Spencer: 7/31 (5)
 Cyra Vale: 2/16
+
+[MONEY]
+cc: 12
+sc: 7
+gc: 42
+
+[SPELL_SLOTS: Cyra Vale]
+1: 4/4
+2: 3/3
+3: 2/3
+4: 1/1
+5: 0/0
+6: 0/0
 >>>
 ```
 
 If temp HP is omitted, it defaults to `0`. Text outside those marker blocks is ignored by the parser.
+
+The parser accepts both EN and RU section aliases:
+
+- `[HP]` / `[ХП]`
+- `[MONEY]` / `[ДЕНЬГИ]`
+- `[SPELL_SLOTS: Name]` / `[ЯЧЕЙКИ_ЗАКЛИНАНИЙ: Name]`
+
+Money aliases are:
+
+- EN: `cc`, `sc`, `gc`
+- RU: `мм`, `см`, `зм`
 
 ## Google Doc sync
 
@@ -69,12 +111,12 @@ The app currently fetches the document through Google Docs text export, so the d
 
 When automatic sync is enabled, temporary fetch failures should not stop polling permanently. The app will keep scheduling the next sync attempt after both successful and failed auto-fetches.
 
-You can also enable an option that updates only existing players from sync data. With that enabled, unknown names from the Google Doc or pasted sync text are skipped instead of creating new dashboard entries.
+You can also enable an option that updates only existing players from sync data. With that enabled, unknown names from the Google Doc or pasted sync text are skipped instead of creating new dashboard entries. Spell slot sections for unknown names are skipped as well.
 
 You can also hide the sync preview entirely from the main window; that visibility state is saved between launches.
 
-When sync mode itself is enabled, manual HP controls are hidden. That means the add-player form and per-player manual HP editing actions disappear, while display-oriented OBS windows and fills remain available. The delete button also remains available in sync mode so players can still be removed from the dashboard.
+When sync mode itself is enabled, manual editing controls are hidden. That means the add-player form, party money edits, and per-player manual HP/spell slot editing actions disappear, while display-oriented OBS windows and fills remain available. The delete button also remains available in sync mode so players can still be removed from the dashboard.
 
 There is also a hidden-by-default fill settings panel. From there you can choose whether portrait fills render as `1:1`, `4:3`, or `3:4`, whether the character name is shown above the fill, and whether spawned player/fill windows stay above other applications or can sit behind them for OBS-only capture. Those settings are saved between launches as well.
 
-Portrait fills open as normal standalone windows so they can be targeted more reliably by OBS window capture.
+Player, money, spell slot, and fill views all open as normal standalone windows so they can be targeted more reliably by OBS window capture.
