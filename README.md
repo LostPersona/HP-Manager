@@ -38,7 +38,7 @@ assets/app.ico
 
 There is a placeholder note at `assets/app.ico.placeholder.txt`. Replace it with your real icon file named `app.ico`, and the app will load it automatically.
 
-When you package the app into a directory build, keep the `assets` folder next to the `.exe`. The state JSON will also be stored next to the `.exe`, which makes the app portable for non-technical users.
+When you package the app into a directory build, the bundled assets are loaded from PyInstaller's internal app contents, while the state JSON is still stored next to the `.exe`, which keeps the app portable for non-technical users.
 
 For custom money icons, place these files in:
 
