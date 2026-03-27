@@ -21,7 +21,7 @@ Desktop HealthPoints manager for DnD-like games, built with Python and `tkinter`
 python app.py
 ```
 
-The app saves its state into `hp_manager_state.json` in the project folder.
+The app saves its state into `hp_manager_state.json` in the app folder.
 
 The selected UI language is also saved there and restored on the next launch.
 
@@ -34,6 +34,8 @@ assets/app.ico
 ```
 
 There is a placeholder note at `assets/app.ico.placeholder.txt`. Replace it with your real icon file named `app.ico`, and the app will load it automatically.
+
+When you package the app into a directory build, keep the `assets` folder next to the `.exe`. The state JSON will also be stored next to the `.exe`, which makes the app portable for non-technical users.
 
 ## Sync format
 

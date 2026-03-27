@@ -4,10 +4,10 @@ import threading
 import tkinter as tk
 from tkinter import messagebox
 from tkinter import ttk
-from pathlib import Path
 
 from hp_manager.localization import Localizer, SUPPORTED_LOCALES
 from hp_manager.models import AppState, Player
+from hp_manager.paths import asset_path
 from hp_manager.storage import load_state, save_state
 from hp_manager.sync import ParseIssue, ParsedSyncLine, SyncFetchError, fetch_google_doc_text, parse_sync_text
 
@@ -16,7 +16,7 @@ WINDOW_MIN_WIDTH = 1060
 WINDOW_MIN_HEIGHT = 560
 OVERLAY_SIZE = 220
 TRANSPARENT_KEY = "#00ff00"
-ICON_PATH = Path("assets/app.ico")
+ICON_PATH = asset_path("app.ico")
 OVERLAY_TITLE_HEIGHT = 30
 
 

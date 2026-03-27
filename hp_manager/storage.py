@@ -4,9 +4,10 @@ import json
 from pathlib import Path
 
 from hp_manager.models import AppState
+from hp_manager.paths import state_path
 
 
-STATE_PATH = Path("hp_manager_state.json")
+STATE_PATH = state_path()
 
 
 def load_state(path: Path = STATE_PATH) -> AppState:
@@ -25,5 +26,6 @@ def load_state(path: Path = STATE_PATH) -> AppState:
 
 
 def save_state(state: AppState, path: Path = STATE_PATH) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
         json.dump(state.to_dict(), handle, indent=2)
