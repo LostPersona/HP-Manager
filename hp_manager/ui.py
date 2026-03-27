@@ -23,7 +23,7 @@ TRANSPARENT_KEY = "#00ff00"
 ICON_PATH = asset_path("app.ico")
 OVERLAY_TITLE_HEIGHT = 30
 WINDOWS_APP_ID = "LostPersona.HPManager"
-SPELL_SLOT_ROMAN = {1: "I", 2: "II", 3: "III", 4: "IV", 5: "V", 6: "VI"}
+SPELL_SLOT_ROMAN = {1: "I", 2: "II", 3: "III", 4: "IV", 5: "V", 6: "VI", 7: "VII", 8: "VIII", 9: "IX"}
 COIN_COLORS = {
     "cc": ("#c98d6b", "#f8d3bb", "#774a35"),
     "sc": ("#c4cad0", "#eff2f6", "#69727b"),
@@ -353,7 +353,7 @@ class SpellSlotsWindow:
         self.player_id = player.player_id
         self.window = tk.Toplevel(app.root)
         self.window.geometry("840x260")
-        self.window.minsize(640, 220)
+        self.window.minsize(420, 220)
         self.window.configure(bg="#090909")
         self.window.protocol("WM_DELETE_WINDOW", self.close)
         self.app.apply_topmost(self.window, self.app.state.overlay.player_windows_topmost)
@@ -365,6 +365,7 @@ class SpellSlotsWindow:
         board = tk.Frame(self.window, bg="#090909")
         board.pack(fill="both", expand=True, padx=12, pady=(0, 12))
         self.board = board
+        self.visible_levels: tuple[int, ...] = ()
         self.slot_titles: dict[int, tk.Label] = {}
         self.slot_values: dict[int, tk.Label] = {}
 
@@ -395,10 +396,34 @@ class SpellSlotsWindow:
 
         self.refresh(player)
 
+    def _apply_layout(self) -> None:
+        visible_levels = self.app.visible_spell_levels()
+        if visible_levels == self.visible_levels:
+            return
+
+        for column, level in enumerate(SPELL_SLOT_LEVELS):
+            weight = 1 if level in visible_levels else 0
+            self.board.columnconfigure(column, weight=weight)
+            self.slot_titles[level].grid_forget()
+            self.slot_values[level].grid_forget()
+
+        for column, level in enumerate(visible_levels):
+            self.slot_titles[level].grid(row=0, column=column, sticky="nsew", padx=4, pady=(0, 4), ipadx=8, ipady=20)
+            self.slot_values[level].grid(row=1, column=column, sticky="nsew", padx=4, pady=(4, 0), ipadx=8, ipady=28)
+
+        visible_count = len(visible_levels)
+        min_width = max(420, 120 * visible_count)
+        default_width = max(520, 140 * visible_count)
+        self.window.minsize(min_width, 220)
+        if self.window.winfo_width() < min_width or self.visible_levels != visible_levels:
+            self.window.geometry(f"{default_width}x260+{self.window.winfo_x()}+{self.window.winfo_y()}")
+        self.visible_levels = visible_levels
+
     def refresh(self, player: Player) -> None:
+        self._apply_layout()
         self.window.title(self.app.t("spell.window_title", name=player.name))
         self.title_label.config(text=self.app.t("spell.window_title", name=player.name))
-        for level in SPELL_SLOT_LEVELS:
+        for level in self.visible_levels:
             slot = player.spell_slots[level]
             self.slot_titles[level].config(text=SPELL_SLOT_ROMAN[level], bd=2, relief="solid", highlightbackground="#9d6b2f")
             self.slot_values[level].config(text=f"{slot.current} / {slot.maximum}", highlightbackground="#9d6b2f")
@@ -414,8 +439,8 @@ class SpellSlotsEditorWindow:
         self.app = app
         self.player_id = player.player_id
         self.window = tk.Toplevel(app.root)
-        self.window.geometry("380x360")
-        self.window.minsize(340, 320)
+        self.window.geometry("400x460")
+        self.window.minsize(360, 420)
         self.window.configure(bg="#101214")
         self.window.protocol("WM_DELETE_WINDOW", self.close)
         self.app.apply_window_icon(self.window)
@@ -725,6 +750,7 @@ class HealthPointsApp:
         self.overlay_ratio_var = tk.StringVar(value=self.state.overlay.aspect_ratio)
         self.money_layout_var = tk.StringVar(value=self.money_layout_label_for_code(self.state.overlay.money_layout))
         self.money_order_var = tk.StringVar(value=self.money_order_label_for_code(self.state.overlay.money_order))
+        self.spell_display_count_var = tk.StringVar(value=str(self.state.overlay.spell_display_count))
         self.overlay_show_title_var = tk.BooleanVar(value=self.state.overlay.show_title)
         self.player_windows_topmost_var = tk.BooleanVar(value=self.state.overlay.player_windows_topmost)
         self.fill_windows_topmost_var = tk.BooleanVar(value=self.state.overlay.fill_windows_topmost)
@@ -881,6 +907,10 @@ class HealthPointsApp:
         if self.state.overlay.money_order == "gc_sc_cc":
             return ("gc", "sc", "cc")
         return ("cc", "sc", "gc")
+
+    def visible_spell_levels(self) -> tuple[int, ...]:
+        count = max(1, min(len(SPELL_SLOT_LEVELS), int(self.state.overlay.spell_display_count)))
+        return SPELL_SLOT_LEVELS[:count]
 
     def overlay_dimensions(self, base_size: int) -> tuple[int, int]:
         base = max(60, min(600, int(base_size)))
@@ -1086,20 +1116,26 @@ class HealthPointsApp:
         self.money_order_combo.grid(row=3, column=1, sticky="w", padx=(12, 0), pady=(12, 0))
         self.money_order_combo.bind("<<ComboboxSelected>>", self.save_overlay_settings)
 
+        self.spell_display_count_label = ttk.Label(card)
+        self.spell_display_count_label.grid(row=4, column=0, sticky="w", pady=(12, 0))
+        self.spell_display_count_combo = ttk.Combobox(card, state="readonly", width=18, textvariable=self.spell_display_count_var)
+        self.spell_display_count_combo.grid(row=4, column=1, sticky="w", padx=(12, 0), pady=(12, 0))
+        self.spell_display_count_combo.bind("<<ComboboxSelected>>", self.save_overlay_settings)
+
         self.window_behavior_label = ttk.Label(card)
-        self.window_behavior_label.grid(row=4, column=0, columnspan=2, sticky="w", pady=(14, 0))
+        self.window_behavior_label.grid(row=5, column=0, columnspan=2, sticky="w", pady=(14, 0))
         self.player_windows_topmost_check = ttk.Checkbutton(
             card,
             variable=self.player_windows_topmost_var,
             command=self.save_overlay_settings,
         )
-        self.player_windows_topmost_check.grid(row=5, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        self.player_windows_topmost_check.grid(row=6, column=0, columnspan=2, sticky="w", pady=(8, 0))
         self.fill_windows_topmost_check = ttk.Checkbutton(
             card,
             variable=self.fill_windows_topmost_var,
             command=self.save_overlay_settings,
         )
-        self.fill_windows_topmost_check.grid(row=6, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        self.fill_windows_topmost_check.grid(row=7, column=0, columnspan=2, sticky="w", pady=(8, 0))
 
     def _build_status_bar(self, parent: ttk.Frame) -> None:
         ttk.Label(parent, textvariable=self.status_var, style="Muted.TLabel").grid(row=3, column=0, columnspan=2, sticky="ew", pady=(14, 0))
@@ -1162,6 +1198,7 @@ class HealthPointsApp:
         self.state.overlay.aspect_ratio = self.overlay_ratio_code_from_label(self.overlay_ratio_var.get())
         self.state.overlay.money_layout = self.money_layout_code_from_label(self.money_layout_var.get())
         self.state.overlay.money_order = self.money_order_code_from_label(self.money_order_var.get())
+        self.state.overlay.spell_display_count = max(1, min(9, int(self.spell_display_count_var.get() or "6")))
         self.state.overlay.show_title = self.overlay_show_title_var.get()
         self.state.overlay.player_windows_topmost = self.player_windows_topmost_var.get()
         self.state.overlay.fill_windows_topmost = self.fill_windows_topmost_var.get()
@@ -1378,6 +1415,7 @@ class HealthPointsApp:
         self.overlay_ratio_label.config(text=self.t("label.overlay_ratio"))
         self.money_layout_label.config(text=self.t("label.money_layout"))
         self.money_order_label.config(text=self.t("label.money_order"))
+        self.spell_display_count_label.config(text=self.t("label.spell_display_count"))
         self.window_behavior_label.config(text=self.t("label.window_behavior"))
         self.overlay_ratio_combo.config(
             values=[
@@ -1401,6 +1439,8 @@ class HealthPointsApp:
             ]
         )
         self.money_order_combo.set(self.t(f"money.order.{self.state.overlay.money_order}"))
+        self.spell_display_count_combo.config(values=[str(level) for level in SPELL_SLOT_LEVELS])
+        self.spell_display_count_combo.set(str(self.state.overlay.spell_display_count))
         self.overlay_title_check.config(text=self.t("overlay.show_title"))
         self.overlay_show_title_var.set(self.state.overlay.show_title)
         self.player_windows_topmost_check.config(text=self.t("overlay.player_windows_topmost"))
@@ -1708,6 +1748,9 @@ class HealthPointsApp:
                 "4: 1/1\n"
                 "5: 0/0\n"
                 "6: 0/0\n"
+                "7: 0/0\n"
+                "8: 0/0\n"
+                "9: 0/0\n"
                 ">>>\n"
             )
         else:
@@ -1730,6 +1773,9 @@ class HealthPointsApp:
                 "4: 1/1\n"
                 "5: 0/0\n"
                 "6: 0/0\n"
+                "7: 0/0\n"
+                "8: 0/0\n"
+                "9: 0/0\n"
                 ">>>\n"
             )
         self.sync_text.delete("1.0", "end")

@@ -7,7 +7,7 @@ Desktop HealthPoints manager for DnD-like games, built with Python and `tkinter`
 - Main dashboard for adding and removing players
 - Per-player HP controls for damage, healing, and direct edits
 - Per-player money tracking with `cc`, `sc`, and `gc`
-- Per-player spell slot tracking for levels I-VI
+- Per-player spell slot tracking for levels I-IX
 - Detachable floating player windows for OBS capture
 - Standalone money and spell slot windows for OBS capture
 - Optional floating portrait fill windows that fill red as HP drops
@@ -71,6 +71,9 @@ gc: 42
 4: 1/1
 5: 0/0
 6: 0/0
+7: 0/0
+8: 0/0
+9: 0/0
 >>>
 ```
 
@@ -97,6 +100,9 @@ gc: 42
 4: 1/1
 5: 0/0
 6: 0/0
+7: 0/0
+8: 0/0
+9: 0/0
 >>>
 ```
 

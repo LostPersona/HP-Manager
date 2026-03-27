@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from hp_manager.localization import normalize_locale
 
-SPELL_SLOT_LEVELS = (1, 2, 3, 4, 5, 6)
+SPELL_SLOT_LEVELS = (1, 2, 3, 4, 5, 6, 7, 8, 9)
 
 
 def _clean_int(value: int | str, default: int = 0) -> int:
@@ -234,6 +234,7 @@ class OverlaySettings:
     fill_windows_topmost: bool = True
     money_layout: str = "stacked"
     money_order: str = "cc_sc_gc"
+    spell_display_count: int = 6
 
     @staticmethod
     def valid_aspect_ratios() -> set[str]:
@@ -247,6 +248,10 @@ class OverlaySettings:
     def valid_money_orders() -> set[str]:
         return {"cc_sc_gc", "gc_sc_cc"}
 
+    @staticmethod
+    def clean_spell_display_count(value: int | str | None) -> int:
+        return max(1, min(9, _clean_int(value, 6)))
+
     def to_dict(self) -> dict[str, bool | str]:
         return {
             "aspect_ratio": self.aspect_ratio if self.aspect_ratio in self.valid_aspect_ratios() else "1:1",
@@ -256,6 +261,7 @@ class OverlaySettings:
             "fill_windows_topmost": self.fill_windows_topmost,
             "money_layout": self.money_layout if self.money_layout in self.valid_money_layouts() else "stacked",
             "money_order": self.money_order if self.money_order in self.valid_money_orders() else "cc_sc_gc",
+            "spell_display_count": self.clean_spell_display_count(self.spell_display_count),
         }
 
     @classmethod
@@ -279,6 +285,7 @@ class OverlaySettings:
             fill_windows_topmost=bool(data.get("fill_windows_topmost", True)),
             money_layout=money_layout,
             money_order=money_order,
+            spell_display_count=cls.clean_spell_display_count(data.get("spell_display_count")),
         )
 
 
