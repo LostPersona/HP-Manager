@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import math
 import queue
 import sys
 import threading
@@ -23,6 +24,11 @@ ICON_PATH = asset_path("app.ico")
 OVERLAY_TITLE_HEIGHT = 30
 WINDOWS_APP_ID = "LostPersona.HPManager"
 SPELL_SLOT_ROMAN = {1: "I", 2: "II", 3: "III", 4: "IV", 5: "V", 6: "VI"}
+COIN_COLORS = {
+    "cc": ("#c98d6b", "#f8d3bb", "#774a35"),
+    "sc": ("#c4cad0", "#eff2f6", "#69727b"),
+    "gc": ("#f0bc25", "#fff4b3", "#8d6500"),
+}
 
 
 def _hp_text_color(ratio: float) -> str:
@@ -190,17 +196,21 @@ class MoneyWindow:
         grid = tk.Frame(self.window, bg="#141414")
         grid.pack(fill="both", expand=True, padx=18, pady=(0, 18))
         self.grid = grid
+        self.icon_widgets: dict[str, tk.Widget] = {}
         self.value_labels: dict[str, tk.Label] = {}
-        self.name_labels: dict[str, tk.Label] = {}
+        self.abbr_labels: dict[str, tk.Label] = {}
 
-        for column, key in enumerate(("cc", "sc", "gc")):
-            grid.columnconfigure(column, weight=1)
-            value = tk.Label(grid, bg="#1b1b1b", fg="#f6e8a5", font=("Consolas", 28, "bold"), bd=1, relief="solid")
-            value.grid(row=0, column=column, sticky="nsew", padx=6, pady=(0, 8), ipadx=12, ipady=10)
+        grid.columnconfigure(1, weight=1)
+        for row, key in enumerate(("cc", "sc", "gc")):
+            icon_widget = self.app.create_coin_widget(grid, key=key, size=42, background="#141414")
+            icon_widget.grid(row=row, column=0, sticky="w", padx=(0, 12), pady=6)
+            value = tk.Label(grid, bg="#1b1b1b", fg="#f6e8a5", font=("Consolas", 24, "bold"), bd=1, relief="solid", anchor="w")
+            value.grid(row=row, column=1, sticky="ew", pady=6, ipadx=14, ipady=8)
             name = tk.Label(grid, bg="#141414", fg="#d2d2d2", font=("Segoe UI Semibold", 11))
-            name.grid(row=1, column=column, sticky="n")
+            name.grid(row=row, column=2, sticky="w", padx=(12, 0))
+            self.icon_widgets[key] = icon_widget
             self.value_labels[key] = value
-            self.name_labels[key] = name
+            self.abbr_labels[key] = name
 
         self.refresh(player)
 
@@ -211,9 +221,11 @@ class MoneyWindow:
         self.value_labels["cc"].config(text=str(money.cc))
         self.value_labels["sc"].config(text=str(money.sc))
         self.value_labels["gc"].config(text=str(money.gc))
-        self.name_labels["cc"].config(text=self.app.t("money.cc"))
-        self.name_labels["sc"].config(text=self.app.t("money.sc"))
-        self.name_labels["gc"].config(text=self.app.t("money.gc"))
+        self.abbr_labels["cc"].config(text=self.app.t("money.cc"))
+        self.abbr_labels["sc"].config(text=self.app.t("money.sc"))
+        self.abbr_labels["gc"].config(text=self.app.t("money.gc"))
+        for key in ("cc", "sc", "gc"):
+            self.app.refresh_coin_widget(self.icon_widgets[key], key=key, size=42, background="#141414")
 
     def close(self) -> None:
         if self.window.winfo_exists():
@@ -237,27 +249,30 @@ class MoneyEditorWindow:
 
         content = ttk.Frame(self.window, padding=(16, 0, 16, 16))
         content.pack(fill="both", expand=True)
-        for column in range(3):
-            content.columnconfigure(column, weight=1)
+        content.columnconfigure(1, weight=1)
 
+        self.icon_widgets: dict[str, tk.Widget] = {}
         self.money_labels: dict[str, ttk.Label] = {}
         self.money_vars: dict[str, tk.StringVar] = {}
-        for column, key in enumerate(("cc", "sc", "gc")):
+        for row, key in enumerate(("cc", "sc", "gc")):
+            icon_widget = self.app.create_coin_widget(content, key=key, size=32, background="#101214")
+            icon_widget.grid(row=row, column=0, sticky="w", pady=6)
             label = ttk.Label(content)
-            label.grid(row=0, column=column, sticky="w", padx=(0 if column == 0 else 8, 0))
+            label.grid(row=row, column=1, sticky="w", padx=(10, 8), pady=6)
             var = tk.StringVar()
-            ttk.Entry(content, textvariable=var, width=8).grid(
-                row=1,
-                column=column,
+            ttk.Entry(content, textvariable=var, width=10).grid(
+                row=row,
+                column=2,
                 sticky="ew",
-                padx=((0, 8) if column == 0 else (8, 8) if column == 1 else (8, 0)),
-                pady=(4, 0),
+                padx=(8, 0),
+                pady=6,
             )
+            self.icon_widgets[key] = icon_widget
             self.money_labels[key] = label
             self.money_vars[key] = var
 
         button_row = ttk.Frame(content)
-        button_row.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(16, 0))
+        button_row.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(16, 0))
         button_row.columnconfigure(0, weight=1)
         button_row.columnconfigure(1, weight=1)
         self.save_button = ttk.Button(button_row, command=self.save)
@@ -278,6 +293,8 @@ class MoneyEditorWindow:
         self.money_vars["gc"].set(str(player.money.gc))
         self.save_button.config(text=self.app.t("action.apply"))
         self.close_button.config(text=self.app.t("action.close"))
+        for key in ("cc", "sc", "gc"):
+            self.app.refresh_coin_widget(self.icon_widgets[key], key=key, size=32, background="#101214")
 
     def save(self) -> None:
         player = self.app.player_by_id(self.player_id)
@@ -677,6 +694,7 @@ class HealthPointsApp:
         self.sync_result_after_id: str | None = None
         self.sync_fetch_in_progress = False
         self.sync_result_queue: queue.Queue[tuple[str, object, bool]] = queue.Queue()
+        self.coin_image_cache: dict[tuple[str, int], tk.PhotoImage] = {}
 
         self._configure_style()
         self._build_layout()
@@ -708,6 +726,84 @@ class HealthPointsApp:
             window.attributes("-topmost", enabled)
         except tk.TclError:
             return
+
+    def _coin_asset_path(self, key: str) -> str:
+        return str(asset_path("coins", f"{key}.png"))
+
+    def get_coin_image(self, key: str, size: int) -> tk.PhotoImage | None:
+        cache_key = (key, size)
+        if cache_key in self.coin_image_cache:
+            return self.coin_image_cache[cache_key]
+
+        coin_path = asset_path("coins", f"{key}.png")
+        if not coin_path.exists():
+            return None
+
+        try:
+            image = tk.PhotoImage(file=str(coin_path))
+        except tk.TclError:
+            return None
+
+        scale = max(1, math.ceil(max(image.width() / max(1, size), image.height() / max(1, size))))
+        if scale > 1:
+            image = image.subsample(scale, scale)
+
+        self.coin_image_cache[cache_key] = image
+        return image
+
+    def create_coin_widget(self, parent: tk.Misc, key: str, size: int, background: str) -> tk.Widget:
+        image = self.get_coin_image(key, size)
+        if image is not None:
+            label = tk.Label(parent, image=image, bg=background, bd=0, highlightthickness=0)
+            label.image = image
+            label.coin_key = key
+            label.coin_size = size
+            label.coin_background = background
+            return label
+
+        base, highlight, outline = COIN_COLORS[key]
+        canvas = tk.Canvas(parent, width=size, height=size, bg=background, highlightthickness=0, bd=0)
+        inset = max(2, size // 10)
+        inner = max(inset + 3, size // 4)
+        canvas.create_oval(2, 2, size - 2, size - 2, fill=base, outline=outline, width=2)
+        canvas.create_oval(inset, inset, size - inset, size - inset, outline=highlight, width=2)
+        canvas.create_oval(inner, inner, size - inner, size - inner, fill=highlight, outline=outline, width=1)
+        canvas.create_text(size // 2, size // 2, text=self.t(f"money.{key}"), fill=outline, font=("Segoe UI Semibold", max(8, size // 5)))
+        canvas.coin_key = key
+        canvas.coin_size = size
+        canvas.coin_background = background
+        return canvas
+
+    def refresh_coin_widget(self, widget: tk.Widget, key: str, size: int, background: str) -> None:
+        image = self.get_coin_image(key, size)
+        if isinstance(widget, tk.Label):
+            if image is not None:
+                widget.config(image=image, bg=background)
+                widget.image = image
+            else:
+                widget.config(image="", text=self.t(f"money.{key}"), bg=background, fg=COIN_COLORS[key][2], font=("Segoe UI Semibold", max(8, size // 5)))
+            return
+
+        if isinstance(widget, tk.Canvas):
+            widget.delete("all")
+            widget.config(width=size, height=size, bg=background)
+            if image is not None:
+                widget.create_image(size // 2, size // 2, image=image)
+                widget.image = image
+            else:
+                base, highlight, outline = COIN_COLORS[key]
+                inset = max(2, size // 10)
+                inner = max(inset + 3, size // 4)
+                widget.create_oval(2, 2, size - 2, size - 2, fill=base, outline=outline, width=2)
+                widget.create_oval(inset, inset, size - inset, size - inset, outline=highlight, width=2)
+                widget.create_oval(inner, inner, size - inner, size - inner, fill=highlight, outline=outline, width=1)
+                widget.create_text(
+                    size // 2,
+                    size // 2,
+                    text=self.t(f"money.{key}"),
+                    fill=outline,
+                    font=("Segoe UI Semibold", max(8, size // 5)),
+                )
 
     def right_panel_visible(self) -> bool:
         return bool(self.state.sync.visible or self.state.overlay.panel_visible)
