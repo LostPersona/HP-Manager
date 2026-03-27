@@ -232,10 +232,15 @@ class OverlaySettings:
     panel_visible: bool = False
     player_windows_topmost: bool = True
     fill_windows_topmost: bool = True
+    money_layout: str = "stacked"
 
     @staticmethod
     def valid_aspect_ratios() -> set[str]:
         return {"1:1", "4:3", "3:4"}
+
+    @staticmethod
+    def valid_money_layouts() -> set[str]:
+        return {"stacked", "inline"}
 
     def to_dict(self) -> dict[str, bool | str]:
         return {
@@ -244,6 +249,7 @@ class OverlaySettings:
             "panel_visible": self.panel_visible,
             "player_windows_topmost": self.player_windows_topmost,
             "fill_windows_topmost": self.fill_windows_topmost,
+            "money_layout": self.money_layout if self.money_layout in self.valid_money_layouts() else "stacked",
         }
 
     @classmethod
@@ -253,12 +259,16 @@ class OverlaySettings:
         aspect_ratio = str(data.get("aspect_ratio") or "1:1")
         if aspect_ratio not in cls.valid_aspect_ratios():
             aspect_ratio = "1:1"
+        money_layout = str(data.get("money_layout") or "stacked")
+        if money_layout not in cls.valid_money_layouts():
+            money_layout = "stacked"
         return cls(
             aspect_ratio=aspect_ratio,
             show_title=bool(data.get("show_title", False)),
             panel_visible=bool(data.get("panel_visible", False)),
             player_windows_topmost=bool(data.get("player_windows_topmost", True)),
             fill_windows_topmost=bool(data.get("fill_windows_topmost", True)),
+            money_layout=money_layout,
         )
 
 

@@ -200,21 +200,49 @@ class MoneyWindow:
         self.value_labels: dict[str, tk.Label] = {}
         self.abbr_labels: dict[str, tk.Label] = {}
 
-        grid.columnconfigure(1, weight=1)
-        for row, key in enumerate(("cc", "sc", "gc")):
+        for key in ("cc", "sc", "gc"):
             icon_widget = self.app.create_coin_widget(grid, key=key, size=42, background="#141414")
-            icon_widget.grid(row=row, column=0, sticky="w", padx=(0, 12), pady=6)
             value = tk.Label(grid, bg="#1b1b1b", fg="#f6e8a5", font=("Consolas", 24, "bold"), bd=1, relief="solid", anchor="w")
-            value.grid(row=row, column=1, sticky="ew", pady=6, ipadx=14, ipady=8)
             name = tk.Label(grid, bg="#141414", fg="#d2d2d2", font=("Segoe UI Semibold", 11))
-            name.grid(row=row, column=2, sticky="w", padx=(12, 0))
             self.icon_widgets[key] = icon_widget
             self.value_labels[key] = value
             self.abbr_labels[key] = name
 
+        self._apply_layout()
+
         self.refresh(player)
 
+    def _apply_layout(self) -> None:
+        inline = self.app.state.overlay.money_layout == "inline"
+        for widget in [*self.icon_widgets.values(), *self.value_labels.values(), *self.abbr_labels.values()]:
+            widget.grid_forget()
+
+        if inline:
+            for column in range(9):
+                self.grid.columnconfigure(column, weight=0)
+            self.grid.columnconfigure(1, weight=1)
+            self.grid.columnconfigure(4, weight=1)
+            self.grid.columnconfigure(7, weight=1)
+            for idx, key in enumerate(("cc", "sc", "gc")):
+                base_col = idx * 3
+                self.icon_widgets[key].grid(row=0, column=base_col, sticky="w", padx=(0 if idx == 0 else 12, 8), pady=6)
+                self.value_labels[key].grid(row=0, column=base_col + 1, sticky="ew", pady=6, ipadx=10, ipady=8)
+                self.abbr_labels[key].grid(row=0, column=base_col + 2, sticky="w", padx=(8, 0), pady=6)
+            self.window.minsize(560, 120)
+            self.window.geometry(f"640x140+{self.window.winfo_x()}+{self.window.winfo_y()}")
+        else:
+            for column in range(3):
+                self.grid.columnconfigure(column, weight=0)
+            self.grid.columnconfigure(1, weight=1)
+            for row, key in enumerate(("cc", "sc", "gc")):
+                self.icon_widgets[key].grid(row=row, column=0, sticky="w", padx=(0, 12), pady=6)
+                self.value_labels[key].grid(row=row, column=1, sticky="ew", pady=6, ipadx=14, ipady=8)
+                self.abbr_labels[key].grid(row=row, column=2, sticky="w", padx=(12, 0), pady=6)
+            self.window.minsize(320, 140)
+            self.window.geometry(f"420x180+{self.window.winfo_x()}+{self.window.winfo_y()}")
+
     def refresh(self, player: Player) -> None:
+        self._apply_layout()
         self.window.title(self.app.t("money.window_title", name=player.name))
         self.title_label.config(text=self.app.t("money.window_title", name=player.name))
         money = player.money
@@ -686,6 +714,7 @@ class HealthPointsApp:
         self.sync_existing_only_var = tk.BooleanVar(value=self.state.sync.existing_only)
         self.locale_display_var = tk.StringVar(value=self.localizer.locale_name(self.state.locale))
         self.overlay_ratio_var = tk.StringVar(value=self.state.overlay.aspect_ratio)
+        self.money_layout_var = tk.StringVar(value=self.money_layout_label_for_code(self.state.overlay.money_layout))
         self.overlay_show_title_var = tk.BooleanVar(value=self.state.overlay.show_title)
         self.player_windows_topmost_var = tk.BooleanVar(value=self.state.overlay.player_windows_topmost)
         self.fill_windows_topmost_var = tk.BooleanVar(value=self.state.overlay.fill_windows_topmost)
@@ -817,6 +846,16 @@ class HealthPointsApp:
             if label == self.overlay_ratio_label_for_code(code):
                 return code
         return "1:1"
+
+    def money_layout_label_for_code(self, code: str) -> str:
+        normalized = code if code in {"stacked", "inline"} else "stacked"
+        return self.t(f"money.layout.{normalized}")
+
+    def money_layout_code_from_label(self, label: str) -> str:
+        for code in ("stacked", "inline"):
+            if label == self.money_layout_label_for_code(code):
+                return code
+        return "stacked"
 
     def overlay_dimensions(self, base_size: int) -> tuple[int, int]:
         base = max(60, min(600, int(base_size)))
@@ -1010,20 +1049,26 @@ class HealthPointsApp:
         self.overlay_title_check = ttk.Checkbutton(card, variable=self.overlay_show_title_var, command=self.save_overlay_settings)
         self.overlay_title_check.grid(row=1, column=0, columnspan=2, sticky="w", pady=(12, 0))
 
+        self.money_layout_label = ttk.Label(card)
+        self.money_layout_label.grid(row=2, column=0, sticky="w", pady=(12, 0))
+        self.money_layout_combo = ttk.Combobox(card, state="readonly", width=18, textvariable=self.money_layout_var)
+        self.money_layout_combo.grid(row=2, column=1, sticky="w", padx=(12, 0), pady=(12, 0))
+        self.money_layout_combo.bind("<<ComboboxSelected>>", self.save_overlay_settings)
+
         self.window_behavior_label = ttk.Label(card)
-        self.window_behavior_label.grid(row=2, column=0, columnspan=2, sticky="w", pady=(14, 0))
+        self.window_behavior_label.grid(row=3, column=0, columnspan=2, sticky="w", pady=(14, 0))
         self.player_windows_topmost_check = ttk.Checkbutton(
             card,
             variable=self.player_windows_topmost_var,
             command=self.save_overlay_settings,
         )
-        self.player_windows_topmost_check.grid(row=3, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        self.player_windows_topmost_check.grid(row=4, column=0, columnspan=2, sticky="w", pady=(8, 0))
         self.fill_windows_topmost_check = ttk.Checkbutton(
             card,
             variable=self.fill_windows_topmost_var,
             command=self.save_overlay_settings,
         )
-        self.fill_windows_topmost_check.grid(row=4, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        self.fill_windows_topmost_check.grid(row=5, column=0, columnspan=2, sticky="w", pady=(8, 0))
 
     def _build_status_bar(self, parent: ttk.Frame) -> None:
         ttk.Label(parent, textvariable=self.status_var, style="Muted.TLabel").grid(row=3, column=0, columnspan=2, sticky="ew", pady=(14, 0))
@@ -1084,6 +1129,7 @@ class HealthPointsApp:
 
     def save_overlay_settings(self, _event: tk.Event | None = None) -> None:
         self.state.overlay.aspect_ratio = self.overlay_ratio_code_from_label(self.overlay_ratio_var.get())
+        self.state.overlay.money_layout = self.money_layout_code_from_label(self.money_layout_var.get())
         self.state.overlay.show_title = self.overlay_show_title_var.get()
         self.state.overlay.player_windows_topmost = self.player_windows_topmost_var.get()
         self.state.overlay.fill_windows_topmost = self.fill_windows_topmost_var.get()
@@ -1297,6 +1343,7 @@ class HealthPointsApp:
         )
         self.overlay_settings_card.config(text=self.t("card.overlay_settings"))
         self.overlay_ratio_label.config(text=self.t("label.overlay_ratio"))
+        self.money_layout_label.config(text=self.t("label.money_layout"))
         self.window_behavior_label.config(text=self.t("label.window_behavior"))
         self.overlay_ratio_combo.config(
             values=[
@@ -1306,6 +1353,13 @@ class HealthPointsApp:
             ]
         )
         self.overlay_ratio_combo.set(self.t(f"overlay.aspect.{self.state.overlay.aspect_ratio}"))
+        self.money_layout_combo.config(
+            values=[
+                self.t("money.layout.stacked"),
+                self.t("money.layout.inline"),
+            ]
+        )
+        self.money_layout_combo.set(self.t(f"money.layout.{self.state.overlay.money_layout}"))
         self.overlay_title_check.config(text=self.t("overlay.show_title"))
         self.overlay_show_title_var.set(self.state.overlay.show_title)
         self.player_windows_topmost_check.config(text=self.t("overlay.player_windows_topmost"))
