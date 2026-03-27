@@ -1307,7 +1307,7 @@ class HealthPointsApp:
         self.state.overlay.money_order = self.money_order_code_from_label(self.money_order_var.get())
         self.state.overlay.spell_display_count = max(1, min(9, int(self.spell_display_count_var.get() or "6")))
         self.state.overlay.hp_font_size = max(12, min(72, int(self.hp_font_size_var.get() or "34")))
-        self.state.overlay.temp_hp_font_size = max(12, min(72, int(self.temp_hp_font_size_var.get() or "12")))
+        self.state.overlay.temp_hp_font_size = max(12, min(72, int(self.temp_hp_font_size_var.get() or "22")))
         self.state.overlay.money_font_size = max(12, min(72, int(self.money_font_size_var.get() or "24")))
         self.state.overlay.spell_level_font_size = max(12, min(72, int(self.spell_level_font_size_var.get() or "32")))
         self.state.overlay.spell_font_size = max(12, min(72, int(self.spell_font_size_var.get() or "24")))
