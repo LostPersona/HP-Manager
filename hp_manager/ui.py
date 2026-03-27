@@ -214,6 +214,7 @@ class MoneyWindow:
 
     def _apply_layout(self) -> None:
         inline = self.app.state.overlay.money_layout == "inline"
+        coin_order = self.app.money_coin_keys()
         for widget in [*self.icon_widgets.values(), *self.value_labels.values(), *self.abbr_labels.values()]:
             widget.grid_forget()
 
@@ -223,7 +224,7 @@ class MoneyWindow:
             self.grid.columnconfigure(1, weight=1)
             self.grid.columnconfigure(4, weight=1)
             self.grid.columnconfigure(7, weight=1)
-            for idx, key in enumerate(("cc", "sc", "gc")):
+            for idx, key in enumerate(coin_order):
                 base_col = idx * 3
                 self.icon_widgets[key].grid(row=0, column=base_col, sticky="w", padx=(0 if idx == 0 else 12, 8), pady=6)
                 self.value_labels[key].grid(row=0, column=base_col + 1, sticky="ew", pady=6, ipadx=10, ipady=8)
@@ -234,7 +235,7 @@ class MoneyWindow:
             for column in range(3):
                 self.grid.columnconfigure(column, weight=0)
             self.grid.columnconfigure(1, weight=1)
-            for row, key in enumerate(("cc", "sc", "gc")):
+            for row, key in enumerate(coin_order):
                 self.icon_widgets[key].grid(row=row, column=0, sticky="w", padx=(0, 12), pady=6)
                 self.value_labels[key].grid(row=row, column=1, sticky="ew", pady=6, ipadx=14, ipady=8)
                 self.abbr_labels[key].grid(row=row, column=2, sticky="w", padx=(12, 0), pady=6)
@@ -279,25 +280,20 @@ class MoneyEditorWindow:
         content.pack(fill="both", expand=True)
         content.columnconfigure(1, weight=1)
 
+        self.content = content
         self.icon_widgets: dict[str, tk.Widget] = {}
         self.money_labels: dict[str, ttk.Label] = {}
         self.money_vars: dict[str, tk.StringVar] = {}
-        for row, key in enumerate(("cc", "sc", "gc")):
+        self.money_entries: dict[str, ttk.Entry] = {}
+        for key in ("cc", "sc", "gc"):
             icon_widget = self.app.create_coin_widget(content, key=key, size=32, background="#101214")
-            icon_widget.grid(row=row, column=0, sticky="w", pady=6)
             label = ttk.Label(content)
-            label.grid(row=row, column=1, sticky="w", padx=(10, 8), pady=6)
             var = tk.StringVar()
-            ttk.Entry(content, textvariable=var, width=10).grid(
-                row=row,
-                column=2,
-                sticky="ew",
-                padx=(8, 0),
-                pady=6,
-            )
+            entry = ttk.Entry(content, textvariable=var, width=10)
             self.icon_widgets[key] = icon_widget
             self.money_labels[key] = label
             self.money_vars[key] = var
+            self.money_entries[key] = entry
 
         button_row = ttk.Frame(content)
         button_row.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(16, 0))
@@ -308,9 +304,22 @@ class MoneyEditorWindow:
         self.close_button = ttk.Button(button_row, command=self.close)
         self.close_button.grid(row=0, column=1, sticky="ew")
 
+        self._apply_layout()
         self.refresh(player)
 
+    def _apply_layout(self) -> None:
+        coin_order = self.app.money_coin_keys()
+        self.content.columnconfigure(1, weight=0)
+        self.content.columnconfigure(2, weight=1)
+        for widget in [*self.icon_widgets.values(), *self.money_labels.values(), *self.money_entries.values()]:
+            widget.grid_forget()
+        for row, key in enumerate(coin_order):
+            self.icon_widgets[key].grid(row=row, column=0, sticky="w", pady=6)
+            self.money_labels[key].grid(row=row, column=1, sticky="w", padx=(10, 8), pady=6)
+            self.money_entries[key].grid(row=row, column=2, sticky="ew", padx=(8, 0), pady=6)
+
     def refresh(self, player: Player) -> None:
+        self._apply_layout()
         self.window.title(self.app.t("money.editor_title", name=player.name))
         self.title_label.config(text=self.app.t("money.editor_title", name=player.name))
         self.money_labels["cc"].config(text=self.app.t("money.cc"))
@@ -715,6 +724,7 @@ class HealthPointsApp:
         self.locale_display_var = tk.StringVar(value=self.localizer.locale_name(self.state.locale))
         self.overlay_ratio_var = tk.StringVar(value=self.state.overlay.aspect_ratio)
         self.money_layout_var = tk.StringVar(value=self.money_layout_label_for_code(self.state.overlay.money_layout))
+        self.money_order_var = tk.StringVar(value=self.money_order_label_for_code(self.state.overlay.money_order))
         self.overlay_show_title_var = tk.BooleanVar(value=self.state.overlay.show_title)
         self.player_windows_topmost_var = tk.BooleanVar(value=self.state.overlay.player_windows_topmost)
         self.fill_windows_topmost_var = tk.BooleanVar(value=self.state.overlay.fill_windows_topmost)
@@ -856,6 +866,21 @@ class HealthPointsApp:
             if label == self.money_layout_label_for_code(code):
                 return code
         return "stacked"
+
+    def money_order_label_for_code(self, code: str) -> str:
+        normalized = code if code in {"cc_sc_gc", "gc_sc_cc"} else "cc_sc_gc"
+        return self.t(f"money.order.{normalized}")
+
+    def money_order_code_from_label(self, label: str) -> str:
+        for code in ("cc_sc_gc", "gc_sc_cc"):
+            if label == self.money_order_label_for_code(code):
+                return code
+        return "cc_sc_gc"
+
+    def money_coin_keys(self) -> tuple[str, str, str]:
+        if self.state.overlay.money_order == "gc_sc_cc":
+            return ("gc", "sc", "cc")
+        return ("cc", "sc", "gc")
 
     def overlay_dimensions(self, base_size: int) -> tuple[int, int]:
         base = max(60, min(600, int(base_size)))
@@ -1055,20 +1080,26 @@ class HealthPointsApp:
         self.money_layout_combo.grid(row=2, column=1, sticky="w", padx=(12, 0), pady=(12, 0))
         self.money_layout_combo.bind("<<ComboboxSelected>>", self.save_overlay_settings)
 
+        self.money_order_label = ttk.Label(card)
+        self.money_order_label.grid(row=3, column=0, sticky="w", pady=(12, 0))
+        self.money_order_combo = ttk.Combobox(card, state="readonly", width=18, textvariable=self.money_order_var)
+        self.money_order_combo.grid(row=3, column=1, sticky="w", padx=(12, 0), pady=(12, 0))
+        self.money_order_combo.bind("<<ComboboxSelected>>", self.save_overlay_settings)
+
         self.window_behavior_label = ttk.Label(card)
-        self.window_behavior_label.grid(row=3, column=0, columnspan=2, sticky="w", pady=(14, 0))
+        self.window_behavior_label.grid(row=4, column=0, columnspan=2, sticky="w", pady=(14, 0))
         self.player_windows_topmost_check = ttk.Checkbutton(
             card,
             variable=self.player_windows_topmost_var,
             command=self.save_overlay_settings,
         )
-        self.player_windows_topmost_check.grid(row=4, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        self.player_windows_topmost_check.grid(row=5, column=0, columnspan=2, sticky="w", pady=(8, 0))
         self.fill_windows_topmost_check = ttk.Checkbutton(
             card,
             variable=self.fill_windows_topmost_var,
             command=self.save_overlay_settings,
         )
-        self.fill_windows_topmost_check.grid(row=5, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        self.fill_windows_topmost_check.grid(row=6, column=0, columnspan=2, sticky="w", pady=(8, 0))
 
     def _build_status_bar(self, parent: ttk.Frame) -> None:
         ttk.Label(parent, textvariable=self.status_var, style="Muted.TLabel").grid(row=3, column=0, columnspan=2, sticky="ew", pady=(14, 0))
@@ -1130,6 +1161,7 @@ class HealthPointsApp:
     def save_overlay_settings(self, _event: tk.Event | None = None) -> None:
         self.state.overlay.aspect_ratio = self.overlay_ratio_code_from_label(self.overlay_ratio_var.get())
         self.state.overlay.money_layout = self.money_layout_code_from_label(self.money_layout_var.get())
+        self.state.overlay.money_order = self.money_order_code_from_label(self.money_order_var.get())
         self.state.overlay.show_title = self.overlay_show_title_var.get()
         self.state.overlay.player_windows_topmost = self.player_windows_topmost_var.get()
         self.state.overlay.fill_windows_topmost = self.fill_windows_topmost_var.get()
@@ -1137,6 +1169,7 @@ class HealthPointsApp:
         self.refresh_player_windows()
         self.refresh_overlay_windows()
         self.refresh_money_window()
+        self.refresh_money_editors()
         self.refresh_spell_windows()
         self.status_var.set(self.t("status.overlay_settings_saved"))
 
@@ -1344,6 +1377,7 @@ class HealthPointsApp:
         self.overlay_settings_card.config(text=self.t("card.overlay_settings"))
         self.overlay_ratio_label.config(text=self.t("label.overlay_ratio"))
         self.money_layout_label.config(text=self.t("label.money_layout"))
+        self.money_order_label.config(text=self.t("label.money_order"))
         self.window_behavior_label.config(text=self.t("label.window_behavior"))
         self.overlay_ratio_combo.config(
             values=[
@@ -1360,6 +1394,13 @@ class HealthPointsApp:
             ]
         )
         self.money_layout_combo.set(self.t(f"money.layout.{self.state.overlay.money_layout}"))
+        self.money_order_combo.config(
+            values=[
+                self.t("money.order.cc_sc_gc"),
+                self.t("money.order.gc_sc_cc"),
+            ]
+        )
+        self.money_order_combo.set(self.t(f"money.order.{self.state.overlay.money_order}"))
         self.overlay_title_check.config(text=self.t("overlay.show_title"))
         self.overlay_show_title_var.set(self.state.overlay.show_title)
         self.player_windows_topmost_check.config(text=self.t("overlay.player_windows_topmost"))

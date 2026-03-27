@@ -233,6 +233,7 @@ class OverlaySettings:
     player_windows_topmost: bool = True
     fill_windows_topmost: bool = True
     money_layout: str = "stacked"
+    money_order: str = "cc_sc_gc"
 
     @staticmethod
     def valid_aspect_ratios() -> set[str]:
@@ -242,6 +243,10 @@ class OverlaySettings:
     def valid_money_layouts() -> set[str]:
         return {"stacked", "inline"}
 
+    @staticmethod
+    def valid_money_orders() -> set[str]:
+        return {"cc_sc_gc", "gc_sc_cc"}
+
     def to_dict(self) -> dict[str, bool | str]:
         return {
             "aspect_ratio": self.aspect_ratio if self.aspect_ratio in self.valid_aspect_ratios() else "1:1",
@@ -250,6 +255,7 @@ class OverlaySettings:
             "player_windows_topmost": self.player_windows_topmost,
             "fill_windows_topmost": self.fill_windows_topmost,
             "money_layout": self.money_layout if self.money_layout in self.valid_money_layouts() else "stacked",
+            "money_order": self.money_order if self.money_order in self.valid_money_orders() else "cc_sc_gc",
         }
 
     @classmethod
@@ -262,6 +268,9 @@ class OverlaySettings:
         money_layout = str(data.get("money_layout") or "stacked")
         if money_layout not in cls.valid_money_layouts():
             money_layout = "stacked"
+        money_order = str(data.get("money_order") or "cc_sc_gc")
+        if money_order not in cls.valid_money_orders():
+            money_order = "cc_sc_gc"
         return cls(
             aspect_ratio=aspect_ratio,
             show_title=bool(data.get("show_title", False)),
@@ -269,6 +278,7 @@ class OverlaySettings:
             player_windows_topmost=bool(data.get("player_windows_topmost", True)),
             fill_windows_topmost=bool(data.get("fill_windows_topmost", True)),
             money_layout=money_layout,
+            money_order=money_order,
         )
 
 
