@@ -235,6 +235,9 @@ class OverlaySettings:
     money_layout: str = "stacked"
     money_order: str = "cc_sc_gc"
     spell_display_count: int = 6
+    hp_font_size: int = 34
+    money_font_size: int = 24
+    spell_font_size: int = 24
 
     @staticmethod
     def valid_aspect_ratios() -> set[str]:
@@ -252,7 +255,11 @@ class OverlaySettings:
     def clean_spell_display_count(value: int | str | None) -> int:
         return max(1, min(9, _clean_int(value, 6)))
 
-    def to_dict(self) -> dict[str, bool | str]:
+    @staticmethod
+    def clean_value_font_size(value: int | str | None, default: int) -> int:
+        return max(12, min(72, _clean_int(value, default)))
+
+    def to_dict(self) -> dict[str, bool | int | str]:
         return {
             "aspect_ratio": self.aspect_ratio if self.aspect_ratio in self.valid_aspect_ratios() else "1:1",
             "show_title": self.show_title,
@@ -262,6 +269,9 @@ class OverlaySettings:
             "money_layout": self.money_layout if self.money_layout in self.valid_money_layouts() else "stacked",
             "money_order": self.money_order if self.money_order in self.valid_money_orders() else "cc_sc_gc",
             "spell_display_count": self.clean_spell_display_count(self.spell_display_count),
+            "hp_font_size": self.clean_value_font_size(self.hp_font_size, 34),
+            "money_font_size": self.clean_value_font_size(self.money_font_size, 24),
+            "spell_font_size": self.clean_value_font_size(self.spell_font_size, 24),
         }
 
     @classmethod
@@ -286,6 +296,9 @@ class OverlaySettings:
             money_layout=money_layout,
             money_order=money_order,
             spell_display_count=cls.clean_spell_display_count(data.get("spell_display_count")),
+            hp_font_size=cls.clean_value_font_size(data.get("hp_font_size"), 34),
+            money_font_size=cls.clean_value_font_size(data.get("money_font_size"), 24),
+            spell_font_size=cls.clean_value_font_size(data.get("spell_font_size"), 24),
         )
 
 
