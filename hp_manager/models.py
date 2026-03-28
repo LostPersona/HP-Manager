@@ -316,10 +316,89 @@ class OverlaySettings:
 
 
 @dataclass(slots=True)
+class InitiativeCombatant:
+    name: str
+    initiative: int = 0
+    portrait_ref: str = ""
+    combatant_id: str = field(default_factory=lambda: uuid4().hex)
+
+    def __post_init__(self) -> None:
+        self.name = (self.name or "Unnamed").strip() or "Unnamed"
+        self.initiative = _clean_int(self.initiative, 0)
+        self.portrait_ref = str(self.portrait_ref or "").strip()
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "combatant_id": self.combatant_id,
+            "name": self.name,
+            "initiative": self.initiative,
+            "portrait_ref": self.portrait_ref,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, object]) -> "InitiativeCombatant":
+        return cls(
+            combatant_id=str(data.get("combatant_id") or uuid4().hex),
+            name=str(data.get("name") or "Unnamed"),
+            initiative=_clean_int(data.get("initiative"), 0),
+            portrait_ref=str(data.get("portrait_ref") or ""),
+        )
+
+
+@dataclass(slots=True)
+class InitiativeState:
+    combatants: list[InitiativeCombatant] = field(default_factory=list)
+    current_turn_index: int = 0
+    round_number: int = 1
+    started: bool = False
+    obs_topmost: bool = True
+
+    def __post_init__(self) -> None:
+        self.combatants = [
+            item if isinstance(item, InitiativeCombatant) else InitiativeCombatant.from_dict(item)
+            for item in self.combatants
+            if isinstance(item, (InitiativeCombatant, dict))
+        ]
+        self.round_number = max(1, _clean_int(self.round_number, 1))
+        self.current_turn_index = max(0, _clean_int(self.current_turn_index, 0))
+        if self.combatants:
+            self.current_turn_index = min(self.current_turn_index, len(self.combatants) - 1)
+        else:
+            self.current_turn_index = 0
+            self.started = False
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "combatants": [combatant.to_dict() for combatant in self.combatants],
+            "current_turn_index": self.current_turn_index,
+            "round_number": self.round_number,
+            "started": self.started,
+            "obs_topmost": self.obs_topmost,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, object] | None) -> "InitiativeState":
+        if not data:
+            return cls()
+        raw_combatants = data.get("combatants", [])
+        combatants = []
+        if isinstance(raw_combatants, list):
+            combatants = [InitiativeCombatant.from_dict(item) for item in raw_combatants if isinstance(item, dict)]
+        return cls(
+            combatants=combatants,
+            current_turn_index=_clean_int(data.get("current_turn_index"), 0),
+            round_number=max(1, _clean_int(data.get("round_number"), 1)),
+            started=bool(data.get("started", False)),
+            obs_topmost=bool(data.get("obs_topmost", True)),
+        )
+
+
+@dataclass(slots=True)
 class AppState:
     players: list[Player] = field(default_factory=list)
     sync: SyncSettings = field(default_factory=SyncSettings)
     overlay: OverlaySettings = field(default_factory=OverlaySettings)
+    initiative: InitiativeState = field(default_factory=InitiativeState)
     locale: str = "en"
 
     def to_dict(self) -> dict[str, object]:
@@ -327,6 +406,7 @@ class AppState:
             "players": [player.to_dict() for player in self.players],
             "sync": self.sync.to_dict(),
             "overlay": self.overlay.to_dict(),
+            "initiative": self.initiative.to_dict(),
             "locale": self.locale,
         }
 
@@ -344,9 +424,12 @@ class AppState:
         sync = SyncSettings.from_dict(raw_sync if isinstance(raw_sync, dict) else None)
         raw_overlay = data.get("overlay")
         overlay = OverlaySettings.from_dict(raw_overlay if isinstance(raw_overlay, dict) else None)
+        raw_initiative = data.get("initiative")
+        initiative = InitiativeState.from_dict(raw_initiative if isinstance(raw_initiative, dict) else None)
         return cls(
             players=players,
             sync=sync,
             overlay=overlay,
+            initiative=initiative,
             locale=normalize_locale(data.get("locale") if isinstance(data.get("locale"), str) else None),
         )

@@ -9,6 +9,7 @@ import tkinter as tk
 from tkinter import messagebox
 from tkinter import ttk
 
+from hp_manager.initiative import InitiativeTrackerWindow
 from hp_manager.localization import Localizer, SUPPORTED_LOCALES
 from hp_manager.models import AppState, Player, SPELL_SLOT_LEVELS
 from hp_manager.paths import asset_path
@@ -796,6 +797,7 @@ class HealthPointsApp:
         self.money_editors: dict[str, MoneyEditorWindow] = {}
         self.spell_windows: dict[str, SpellSlotsWindow] = {}
         self.spell_editors: dict[str, SpellSlotsEditorWindow] = {}
+        self.initiative_tracker_window: InitiativeTrackerWindow | None = None
 
         self.status_var = tk.StringVar(value=self.t("status.ready"))
         self.add_name_var = tk.StringVar()
@@ -881,6 +883,22 @@ class HealthPointsApp:
 
     def sync_mode_active(self) -> bool:
         return bool(self.state.sync.enabled)
+
+    def open_initiative_tracker(self) -> None:
+        if self.initiative_tracker_window is None:
+            self.initiative_tracker_window = InitiativeTrackerWindow(self)
+        else:
+            try:
+                self.initiative_tracker_window.window.deiconify()
+                self.initiative_tracker_window.window.lift()
+                self.initiative_tracker_window.window.focus_force()
+            except tk.TclError:
+                self.initiative_tracker_window = InitiativeTrackerWindow(self)
+                return
+        self.initiative_tracker_window.refresh()
+
+    def unregister_initiative_tracker(self) -> None:
+        self.initiative_tracker_window = None
 
     def apply_topmost(self, window: tk.Misc, enabled: bool) -> None:
         try:
@@ -1084,6 +1102,8 @@ class HealthPointsApp:
         self.sync_toggle_button.grid(row=2, column=0, columnspan=2, sticky="e", pady=(8, 0))
         self.settings_toggle_button = ttk.Button(top_right, command=self.toggle_settings_visibility)
         self.settings_toggle_button.grid(row=3, column=0, columnspan=2, sticky="e", pady=(8, 0))
+        self.initiative_toggle_button = ttk.Button(top_right, command=self.open_initiative_tracker)
+        self.initiative_toggle_button.grid(row=4, column=0, columnspan=2, sticky="e", pady=(8, 0))
 
         left = ttk.Frame(container)
         left.rowconfigure(1, weight=1)
@@ -1559,6 +1579,7 @@ class HealthPointsApp:
         self.settings_toggle_button.config(
             text=self.t("action.hide_settings") if self.state.overlay.panel_visible else self.t("action.show_settings")
         )
+        self.initiative_toggle_button.config(text=self.t("action.open_initiative_tracker"))
         self.overlay_settings_card.config(text=self.t("card.overlay_settings"))
         self.overlay_ratio_label.config(text=self.t("label.overlay_ratio"))
         self.money_layout_label.config(text=self.t("label.money_layout"))
@@ -1621,6 +1642,8 @@ class HealthPointsApp:
             self.overlay_settings_card.grid()
         else:
             self.overlay_settings_card.grid_remove()
+        if self.initiative_tracker_window is not None:
+            self.initiative_tracker_window.refresh()
         self.refresh_sync_mode_visibility()
 
     def refresh_sync_mode_visibility(self) -> None:
@@ -2005,6 +2028,8 @@ class HealthPointsApp:
         self.refresh_money_window()
         self.refresh_money_editors()
         self._on_rows_configure()
+        if self.initiative_tracker_window is not None:
+            self.initiative_tracker_window.refresh()
 
     def on_close(self) -> None:
         self.state.sync.enabled = self.sync_enabled_var.get()
@@ -2020,6 +2045,8 @@ class HealthPointsApp:
         if self.sync_result_after_id is not None:
             self.root.after_cancel(self.sync_result_after_id)
             self.sync_result_after_id = None
+        if self.initiative_tracker_window is not None:
+            self.initiative_tracker_window.close()
         save_state(self.state)
         self.root.destroy()
 

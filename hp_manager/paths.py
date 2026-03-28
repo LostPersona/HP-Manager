@@ -24,3 +24,11 @@ def state_base_dir() -> Path:
 
 def state_path(filename: str = "hp_manager_state.json") -> Path:
     return state_base_dir().joinpath(filename)
+
+
+def user_portraits_dir() -> Path:
+    return state_base_dir().joinpath("portraits")
+
+
+def bundled_portraits_dir() -> Path:
+    return asset_path("portraits")
