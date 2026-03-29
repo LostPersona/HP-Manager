@@ -27,8 +27,6 @@ WINDOWS_APP_ID = "LostPersona.HPManager"
 SPELL_SLOT_ROMAN = {1: "I", 2: "II", 3: "III", 4: "IV", 5: "V", 6: "VI", 7: "VII", 8: "VIII", 9: "IX"}
 FONT_SIZE_OPTIONS = tuple(str(size) for size in range(12, 73, 2))
 SPELL_CELL_SCALE_OPTIONS = ("80%", "100%", "120%", "140%", "160%", "180%", "200%")
-SPELL_PIP_DISPLAY_MAX = 10
-SPELL_PIP_COLUMNS = 5
 COIN_COLORS = {
     "cc": ("#c98d6b", "#f8d3bb", "#774a35"),
     "sc": ("#c4cad0", "#eff2f6", "#69727b"),
@@ -420,10 +418,6 @@ class SpellSlotsWindow:
             value.pack(expand=True, fill="both")
             pip_frame = tk.Frame(cell, bg="#040404")
             pips: list[tk.Canvas] = []
-            for idx in range(SPELL_PIP_DISPLAY_MAX):
-                pip = tk.Canvas(pip_frame, width=18, height=18, bg="#040404", bd=0, highlightthickness=0)
-                pip.grid(row=idx // SPELL_PIP_COLUMNS, column=idx % SPELL_PIP_COLUMNS, padx=4, pady=4)
-                pips.append(pip)
             self.slot_titles[level] = title
             self.slot_cells[level] = cell
             self.slot_values[level] = value
@@ -432,7 +426,16 @@ class SpellSlotsWindow:
 
         self.refresh(player)
 
-    def _apply_layout(self) -> None:
+    def _pip_grid_side(self, max_slots: int) -> int:
+        return max(1, math.ceil(math.sqrt(max(1, max_slots))))
+
+    def _ensure_slot_pips(self, level: int, count: int) -> None:
+        pips = self.slot_pips[level]
+        while len(pips) < count:
+            pip = tk.Canvas(self.slot_pip_frames[level], width=18, height=18, bg="#040404", bd=0, highlightthickness=0)
+            pips.append(pip)
+
+    def _apply_layout(self, player: Player) -> None:
         visible_levels = self.app.visible_spell_levels()
         render_mode = self.app.state.overlay.spell_render_mode
         scale = (
@@ -495,14 +498,15 @@ class SpellSlotsWindow:
             )
         else:
             pip_size = max(10, int(round(18 * scale)))
+            grid_side = max(self._pip_grid_side(player.spell_slots[level].maximum) for level in visible_levels) if visible_levels else 1
             cell_width = max(
                 86,
                 int(round((self.app.state.overlay.spell_level_font_size * 1.5 + 12) * scale)),
-                int(round(pip_size * 5.8)),
+                int(round((pip_size + 8) * grid_side + 18)),
             )
             min_height = max(
                 210,
-                int(round(120 + self.app.state.overlay.spell_level_font_size * 1.7 * scale + pip_size * 2.9)),
+                int(round(120 + self.app.state.overlay.spell_level_font_size * 1.7 * scale + (pip_size + 8) * grid_side)),
             )
         min_width = max(420, 24 + visible_count * cell_width)
         default_width = max(520, 32 + visible_count * int(cell_width * 1.12))
@@ -515,7 +519,7 @@ class SpellSlotsWindow:
         self.visible_levels = visible_levels
 
     def refresh(self, player: Player) -> None:
-        self._apply_layout()
+        self._apply_layout(player)
         self.window.title(self.app.t("spell.window_title", name=player.name))
         self.title_label.config(text=self.app.t("spell.window_title", name=player.name))
         render_mode = self.app.state.overlay.spell_render_mode
@@ -541,14 +545,16 @@ class SpellSlotsWindow:
             else:
                 self.slot_values[level].pack_forget()
                 self.slot_pip_frames[level].pack(expand=True)
-                max_slots = max(0, min(SPELL_PIP_DISPLAY_MAX, slot.maximum))
+                max_slots = max(0, slot.maximum)
                 current_slots = max(0, min(max_slots, slot.current))
+                grid_side = self._pip_grid_side(max_slots)
+                self._ensure_slot_pips(level, max_slots)
                 for idx, pip in enumerate(self.slot_pips[level]):
                     pip.delete("all")
                     if idx >= max_slots:
                         pip.grid_remove()
                         continue
-                    pip.grid()
+                    pip.grid(row=idx // grid_side, column=idx % grid_side, padx=4, pady=4)
                     pip.config(width=pip_size, height=pip_size)
                     fill = "#53f4ff" if idx < current_slots else "#223841"
                     outline = "#abfbff" if idx < current_slots else "#4b646d"
