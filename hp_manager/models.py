@@ -235,12 +235,14 @@ class OverlaySettings:
     money_layout: str = "stacked"
     money_order: str = "cc_sc_gc"
     spell_display_count: int = 6
+    spell_render_mode: str = "text"
     hp_font_size: int = 34
     temp_hp_font_size: int = 22
     money_font_size: int = 24
     spell_level_font_size: int = 32
     spell_font_size: int = 24
     spell_cell_scale: int = 100
+    spell_pip_scale: int = 100
 
     @staticmethod
     def valid_aspect_ratios() -> set[str]:
@@ -253,6 +255,10 @@ class OverlaySettings:
     @staticmethod
     def valid_money_orders() -> set[str]:
         return {"cc_sc_gc", "gc_sc_cc"}
+
+    @staticmethod
+    def valid_spell_render_modes() -> set[str]:
+        return {"text", "pips"}
 
     @staticmethod
     def clean_spell_display_count(value: int | str | None) -> int:
@@ -276,12 +282,14 @@ class OverlaySettings:
             "money_layout": self.money_layout if self.money_layout in self.valid_money_layouts() else "stacked",
             "money_order": self.money_order if self.money_order in self.valid_money_orders() else "cc_sc_gc",
             "spell_display_count": self.clean_spell_display_count(self.spell_display_count),
+            "spell_render_mode": self.spell_render_mode if self.spell_render_mode in self.valid_spell_render_modes() else "text",
             "hp_font_size": self.clean_value_font_size(self.hp_font_size, 34),
             "temp_hp_font_size": self.clean_value_font_size(self.temp_hp_font_size, 22),
             "money_font_size": self.clean_value_font_size(self.money_font_size, 24),
             "spell_level_font_size": self.clean_value_font_size(self.spell_level_font_size, 32),
             "spell_font_size": self.clean_value_font_size(self.spell_font_size, 24),
             "spell_cell_scale": self.clean_spell_cell_scale(self.spell_cell_scale),
+            "spell_pip_scale": self.clean_spell_cell_scale(self.spell_pip_scale),
         }
 
     @classmethod
@@ -297,6 +305,9 @@ class OverlaySettings:
         money_order = str(data.get("money_order") or "cc_sc_gc")
         if money_order not in cls.valid_money_orders():
             money_order = "cc_sc_gc"
+        spell_render_mode = str(data.get("spell_render_mode") or "text")
+        if spell_render_mode not in cls.valid_spell_render_modes():
+            spell_render_mode = "text"
         return cls(
             aspect_ratio=aspect_ratio,
             show_title=bool(data.get("show_title", False)),
@@ -306,12 +317,14 @@ class OverlaySettings:
             money_layout=money_layout,
             money_order=money_order,
             spell_display_count=cls.clean_spell_display_count(data.get("spell_display_count")),
+            spell_render_mode=spell_render_mode,
             hp_font_size=cls.clean_value_font_size(data.get("hp_font_size"), 34),
             temp_hp_font_size=cls.clean_value_font_size(data.get("temp_hp_font_size"), 22),
             money_font_size=cls.clean_value_font_size(data.get("money_font_size"), 24),
             spell_level_font_size=cls.clean_value_font_size(data.get("spell_level_font_size"), 32),
             spell_font_size=cls.clean_value_font_size(data.get("spell_font_size"), 24),
             spell_cell_scale=cls.clean_spell_cell_scale(data.get("spell_cell_scale")),
+            spell_pip_scale=cls.clean_spell_cell_scale(data.get("spell_pip_scale")),
         )
 
 
