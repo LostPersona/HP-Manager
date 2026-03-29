@@ -27,6 +27,8 @@ WINDOWS_APP_ID = "LostPersona.HPManager"
 SPELL_SLOT_ROMAN = {1: "I", 2: "II", 3: "III", 4: "IV", 5: "V", 6: "VI", 7: "VII", 8: "VIII", 9: "IX"}
 FONT_SIZE_OPTIONS = tuple(str(size) for size in range(12, 73, 2))
 SPELL_CELL_SCALE_OPTIONS = ("80%", "100%", "120%", "140%", "160%", "180%", "200%")
+SPELL_PIP_DISPLAY_MAX = 10
+SPELL_PIP_COLUMNS = 5
 COIN_COLORS = {
     "cc": ("#c98d6b", "#f8d3bb", "#774a35"),
     "sc": ("#c4cad0", "#eff2f6", "#69727b"),
@@ -418,9 +420,9 @@ class SpellSlotsWindow:
             value.pack(expand=True, fill="both")
             pip_frame = tk.Frame(cell, bg="#040404")
             pips: list[tk.Canvas] = []
-            for idx in range(4):
+            for idx in range(SPELL_PIP_DISPLAY_MAX):
                 pip = tk.Canvas(pip_frame, width=18, height=18, bg="#040404", bd=0, highlightthickness=0)
-                pip.grid(row=idx // 2, column=idx % 2, padx=4, pady=4)
+                pip.grid(row=idx // SPELL_PIP_COLUMNS, column=idx % SPELL_PIP_COLUMNS, padx=4, pady=4)
                 pips.append(pip)
             self.slot_titles[level] = title
             self.slot_cells[level] = cell
@@ -496,11 +498,11 @@ class SpellSlotsWindow:
             cell_width = max(
                 86,
                 int(round((self.app.state.overlay.spell_level_font_size * 1.5 + 12) * scale)),
-                int(round(pip_size * 2.8)),
+                int(round(pip_size * 5.8)),
             )
             min_height = max(
                 210,
-                int(round(120 + self.app.state.overlay.spell_level_font_size * 1.7 * scale + pip_size * 2.8)),
+                int(round(120 + self.app.state.overlay.spell_level_font_size * 1.7 * scale + pip_size * 2.9)),
             )
         min_width = max(420, 24 + visible_count * cell_width)
         default_width = max(520, 32 + visible_count * int(cell_width * 1.12))
@@ -539,7 +541,7 @@ class SpellSlotsWindow:
             else:
                 self.slot_values[level].pack_forget()
                 self.slot_pip_frames[level].pack(expand=True)
-                max_slots = max(0, min(4, slot.maximum))
+                max_slots = max(0, min(SPELL_PIP_DISPLAY_MAX, slot.maximum))
                 current_slots = max(0, min(max_slots, slot.current))
                 for idx, pip in enumerate(self.slot_pips[level]):
                     pip.delete("all")
