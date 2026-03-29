@@ -455,6 +455,7 @@ class SpellSlotsWindow:
     def _apply_layout(self, player: Player) -> None:
         visible_levels = self.app.visible_spell_levels()
         render_mode = self.app.state.overlay.spell_render_mode
+        show_headers = self.app.state.overlay.show_spell_level_headers
         scale = (
             self.app.state.overlay.spell_cell_scale / 100
             if render_mode == "text"
@@ -476,21 +477,22 @@ class SpellSlotsWindow:
             self.slot_cells[level].grid_forget()
 
         for column, level in enumerate(visible_levels):
-            self.slot_titles[level].grid(
-                row=0,
-                column=column,
-                sticky="nsew",
-                padx=title_padx,
-                pady=(0, title_pady),
-                ipadx=title_ipadx,
-                ipady=title_ipady,
-            )
+            if show_headers:
+                self.slot_titles[level].grid(
+                    row=0,
+                    column=column,
+                    sticky="nsew",
+                    padx=title_padx,
+                    pady=(0, title_pady),
+                    ipadx=title_ipadx,
+                    ipady=title_ipady,
+                )
             self.slot_cells[level].grid(
-                row=1,
+                row=1 if show_headers else 0,
                 column=column,
                 sticky="nsew",
                 padx=value_padx,
-                pady=(value_pady, 0),
+                pady=(value_pady if show_headers else 0, 0),
                 ipadx=value_ipadx,
                 ipady=value_ipady,
             )
@@ -521,9 +523,10 @@ class SpellSlotsWindow:
                 int(round((self.app.state.overlay.spell_level_font_size * 1.5 + 12) * scale)),
                 int(round((pip_size + 8) * grid_side + 18)),
             )
+            content_span = (pip_size + 8) * grid_side
             min_height = max(
                 210,
-                int(round(120 + self.app.state.overlay.spell_level_font_size * 1.7 * scale + (pip_size + 8) * grid_side)),
+                int(round((84 if show_headers else 48) + self.app.state.overlay.spell_level_font_size * (1.7 * scale if show_headers else 0) + content_span)),
             )
         min_width = max(420, 24 + visible_count * cell_width)
         default_width = max(520, 32 + visible_count * int(cell_width * 1.12))
@@ -539,6 +542,7 @@ class SpellSlotsWindow:
         self._apply_layout(player)
         self.window.title(self.app.t("spell.window_title", name=player.name))
         background_visible = self.app.state.overlay.spell_window_background
+        show_headers = self.app.state.overlay.show_spell_level_headers
         base_bg = "#090909" if background_visible else TRANSPARENT_KEY
         title_bg = "#0d0d0d" if background_visible else TRANSPARENT_KEY
         cell_bg = "#040404" if background_visible else TRANSPARENT_KEY
@@ -547,7 +551,9 @@ class SpellSlotsWindow:
         self.title_label.config(text=self.app.t("spell.window_title", name=player.name), bg=base_bg)
         render_mode = self.app.state.overlay.spell_render_mode
         pip_scale = self.app.state.overlay.spell_pip_scale / 100
-        pip_size = max(10, int(round(18 * pip_scale)))
+        base_pip_size = max(10, int(round(18 * pip_scale)))
+        max_grid_side = max(self._pip_grid_side(player.spell_slots[level].maximum) for level in self.visible_levels) if self.visible_levels else 1
+        target_span = (base_pip_size + 8) * max_grid_side
         for level in self.visible_levels:
             slot = player.spell_slots[level]
             self.slot_titles[level].config(
@@ -557,7 +563,10 @@ class SpellSlotsWindow:
                 relief="solid" if background_visible else "flat",
                 highlightbackground="#9d6b2f" if background_visible else TRANSPARENT_KEY,
                 font=("Segoe UI Semibold", self.app.state.overlay.spell_level_font_size),
+                fg="#f4f4f4",
             )
+            if not show_headers:
+                self.slot_titles[level].grid_remove()
             self.slot_cells[level].config(bg=cell_bg, bd=2 if background_visible else 0, relief="solid" if background_visible else "flat", highlightbackground="#9d6b2f" if background_visible else TRANSPARENT_KEY)
             if render_mode == "text":
                 self.slot_pip_frames[level].pack_forget()
@@ -574,6 +583,7 @@ class SpellSlotsWindow:
                 max_slots = max(0, slot.maximum)
                 current_slots = max(0, min(max_slots, slot.current))
                 grid_side = self._pip_grid_side(max_slots)
+                pip_size = max(10, int((target_span - 8 * grid_side) / max(1, grid_side)))
                 self._ensure_slot_pips(level, max_slots)
                 for idx, pip in enumerate(self.slot_pips[level]):
                     pip.delete("all")
@@ -920,6 +930,7 @@ class HealthPointsApp:
         self.money_order_var = tk.StringVar(value=self.money_order_label_for_code(self.state.overlay.money_order))
         self.spell_display_count_var = tk.StringVar(value=str(self.state.overlay.spell_display_count))
         self.spell_render_mode_var = tk.StringVar(value=self.spell_render_mode_label_for_code(self.state.overlay.spell_render_mode))
+        self.show_spell_level_headers_var = tk.BooleanVar(value=self.state.overlay.show_spell_level_headers)
         self.hp_font_size_var = tk.StringVar(value=str(self.state.overlay.hp_font_size))
         self.temp_hp_font_size_var = tk.StringVar(value=str(self.state.overlay.temp_hp_font_size))
         self.money_font_size_var = tk.StringVar(value=str(self.state.overlay.money_font_size))
@@ -1166,6 +1177,13 @@ class HealthPointsApp:
 
     def refresh_spell_mode_controls(self) -> None:
         text_mode = self.state.overlay.spell_render_mode == "text"
+        show_headers = self.state.overlay.show_spell_level_headers
+        if show_headers:
+            self.spell_level_font_size_label.grid()
+            self.spell_level_font_size_combo.grid()
+        else:
+            self.spell_level_font_size_label.grid_remove()
+            self.spell_level_font_size_combo.grid_remove()
         if text_mode:
             self.spell_font_size_label.grid()
             self.spell_font_size_combo.grid()
@@ -1399,89 +1417,96 @@ class HealthPointsApp:
         self.spell_render_mode_combo.grid(row=5, column=1, sticky="w", padx=(12, 0), pady=(12, 0))
         self.spell_render_mode_combo.bind("<<ComboboxSelected>>", self.save_overlay_settings)
 
+        self.show_spell_level_headers_check = ttk.Checkbutton(
+            card,
+            variable=self.show_spell_level_headers_var,
+            command=self.save_overlay_settings,
+        )
+        self.show_spell_level_headers_check.grid(row=6, column=0, columnspan=2, sticky="w", pady=(12, 0))
+
         self.hp_font_size_label = ttk.Label(card)
-        self.hp_font_size_label.grid(row=6, column=0, sticky="w", pady=(12, 0))
+        self.hp_font_size_label.grid(row=7, column=0, sticky="w", pady=(12, 0))
         self.hp_font_size_combo = ttk.Combobox(card, state="readonly", width=18, textvariable=self.hp_font_size_var)
-        self.hp_font_size_combo.grid(row=6, column=1, sticky="w", padx=(12, 0), pady=(12, 0))
+        self.hp_font_size_combo.grid(row=7, column=1, sticky="w", padx=(12, 0), pady=(12, 0))
         self.hp_font_size_combo.bind("<<ComboboxSelected>>", self.save_overlay_settings)
 
         self.temp_hp_font_size_label = ttk.Label(card)
-        self.temp_hp_font_size_label.grid(row=7, column=0, sticky="w", pady=(12, 0))
+        self.temp_hp_font_size_label.grid(row=8, column=0, sticky="w", pady=(12, 0))
         self.temp_hp_font_size_combo = ttk.Combobox(card, state="readonly", width=18, textvariable=self.temp_hp_font_size_var)
-        self.temp_hp_font_size_combo.grid(row=7, column=1, sticky="w", padx=(12, 0), pady=(12, 0))
+        self.temp_hp_font_size_combo.grid(row=8, column=1, sticky="w", padx=(12, 0), pady=(12, 0))
         self.temp_hp_font_size_combo.bind("<<ComboboxSelected>>", self.save_overlay_settings)
 
         self.money_font_size_label = ttk.Label(card)
-        self.money_font_size_label.grid(row=8, column=0, sticky="w", pady=(12, 0))
+        self.money_font_size_label.grid(row=9, column=0, sticky="w", pady=(12, 0))
         self.money_font_size_combo = ttk.Combobox(card, state="readonly", width=18, textvariable=self.money_font_size_var)
-        self.money_font_size_combo.grid(row=8, column=1, sticky="w", padx=(12, 0), pady=(12, 0))
+        self.money_font_size_combo.grid(row=9, column=1, sticky="w", padx=(12, 0), pady=(12, 0))
         self.money_font_size_combo.bind("<<ComboboxSelected>>", self.save_overlay_settings)
 
         self.spell_level_font_size_label = ttk.Label(card)
-        self.spell_level_font_size_label.grid(row=9, column=0, sticky="w", pady=(12, 0))
+        self.spell_level_font_size_label.grid(row=10, column=0, sticky="w", pady=(12, 0))
         self.spell_level_font_size_combo = ttk.Combobox(card, state="readonly", width=18, textvariable=self.spell_level_font_size_var)
-        self.spell_level_font_size_combo.grid(row=9, column=1, sticky="w", padx=(12, 0), pady=(12, 0))
+        self.spell_level_font_size_combo.grid(row=10, column=1, sticky="w", padx=(12, 0), pady=(12, 0))
         self.spell_level_font_size_combo.bind("<<ComboboxSelected>>", self.save_overlay_settings)
 
         self.spell_font_size_label = ttk.Label(card)
-        self.spell_font_size_label.grid(row=10, column=0, sticky="w", pady=(12, 0))
+        self.spell_font_size_label.grid(row=11, column=0, sticky="w", pady=(12, 0))
         self.spell_font_size_combo = ttk.Combobox(card, state="readonly", width=18, textvariable=self.spell_font_size_var)
-        self.spell_font_size_combo.grid(row=10, column=1, sticky="w", padx=(12, 0), pady=(12, 0))
+        self.spell_font_size_combo.grid(row=11, column=1, sticky="w", padx=(12, 0), pady=(12, 0))
         self.spell_font_size_combo.bind("<<ComboboxSelected>>", self.save_overlay_settings)
 
         self.spell_cell_scale_text_label = ttk.Label(card)
-        self.spell_cell_scale_text_label.grid(row=11, column=0, sticky="w", pady=(12, 0))
+        self.spell_cell_scale_text_label.grid(row=12, column=0, sticky="w", pady=(12, 0))
         self.spell_cell_scale_combo = ttk.Combobox(card, state="readonly", width=18, textvariable=self.spell_cell_scale_var)
-        self.spell_cell_scale_combo.grid(row=11, column=1, sticky="w", padx=(12, 0), pady=(12, 0))
+        self.spell_cell_scale_combo.grid(row=12, column=1, sticky="w", padx=(12, 0), pady=(12, 0))
         self.spell_cell_scale_combo.bind("<<ComboboxSelected>>", self.save_overlay_settings)
 
         self.spell_pip_scale_label = ttk.Label(card)
-        self.spell_pip_scale_label.grid(row=12, column=0, sticky="w", pady=(12, 0))
+        self.spell_pip_scale_label.grid(row=13, column=0, sticky="w", pady=(12, 0))
         self.spell_pip_scale_combo = ttk.Combobox(card, state="readonly", width=18, textvariable=self.spell_pip_scale_var)
-        self.spell_pip_scale_combo.grid(row=12, column=1, sticky="w", padx=(12, 0), pady=(12, 0))
+        self.spell_pip_scale_combo.grid(row=13, column=1, sticky="w", padx=(12, 0), pady=(12, 0))
         self.spell_pip_scale_combo.bind("<<ComboboxSelected>>", self.save_overlay_settings)
 
         self.window_behavior_label = ttk.Label(card)
-        self.window_behavior_label.grid(row=13, column=0, columnspan=2, sticky="w", pady=(14, 0))
+        self.window_behavior_label.grid(row=14, column=0, columnspan=2, sticky="w", pady=(14, 0))
         self.player_windows_topmost_check = ttk.Checkbutton(
             card,
             variable=self.player_windows_topmost_var,
             command=self.save_overlay_settings,
         )
-        self.player_windows_topmost_check.grid(row=14, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        self.player_windows_topmost_check.grid(row=15, column=0, columnspan=2, sticky="w", pady=(8, 0))
         self.fill_windows_topmost_check = ttk.Checkbutton(
             card,
             variable=self.fill_windows_topmost_var,
             command=self.save_overlay_settings,
         )
-        self.fill_windows_topmost_check.grid(row=15, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        self.fill_windows_topmost_check.grid(row=16, column=0, columnspan=2, sticky="w", pady=(8, 0))
 
         self.window_backgrounds_label = ttk.Label(card)
-        self.window_backgrounds_label.grid(row=16, column=0, columnspan=2, sticky="w", pady=(14, 0))
+        self.window_backgrounds_label.grid(row=17, column=0, columnspan=2, sticky="w", pady=(14, 0))
         self.player_window_background_check = ttk.Checkbutton(
             card,
             variable=self.player_window_background_var,
             command=self.save_overlay_settings,
         )
-        self.player_window_background_check.grid(row=17, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        self.player_window_background_check.grid(row=18, column=0, columnspan=2, sticky="w", pady=(8, 0))
         self.money_window_background_check = ttk.Checkbutton(
             card,
             variable=self.money_window_background_var,
             command=self.save_overlay_settings,
         )
-        self.money_window_background_check.grid(row=18, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        self.money_window_background_check.grid(row=19, column=0, columnspan=2, sticky="w", pady=(8, 0))
         self.spell_window_background_check = ttk.Checkbutton(
             card,
             variable=self.spell_window_background_var,
             command=self.save_overlay_settings,
         )
-        self.spell_window_background_check.grid(row=19, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        self.spell_window_background_check.grid(row=20, column=0, columnspan=2, sticky="w", pady=(8, 0))
         self.fill_window_background_check = ttk.Checkbutton(
             card,
             variable=self.fill_window_background_var,
             command=self.save_overlay_settings,
         )
-        self.fill_window_background_check.grid(row=20, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        self.fill_window_background_check.grid(row=21, column=0, columnspan=2, sticky="w", pady=(8, 0))
 
     def _build_status_bar(self, parent: ttk.Frame) -> None:
         ttk.Label(parent, textvariable=self.status_var, style="Muted.TLabel").grid(row=3, column=0, columnspan=2, sticky="ew", pady=(14, 0))
@@ -1546,6 +1571,7 @@ class HealthPointsApp:
         self.state.overlay.money_order = self.money_order_code_from_label(self.money_order_var.get())
         self.state.overlay.spell_display_count = max(1, min(9, int(self.spell_display_count_var.get() or "6")))
         self.state.overlay.spell_render_mode = self.spell_render_mode_code_from_label(self.spell_render_mode_var.get())
+        self.state.overlay.show_spell_level_headers = self.show_spell_level_headers_var.get()
         self.state.overlay.hp_font_size = max(12, min(72, int(self.hp_font_size_var.get() or "34")))
         self.state.overlay.temp_hp_font_size = max(12, min(72, int(self.temp_hp_font_size_var.get() or "22")))
         self.state.overlay.money_font_size = max(12, min(72, int(self.money_font_size_var.get() or "24")))
@@ -1777,6 +1803,7 @@ class HealthPointsApp:
         self.money_order_label.config(text=self.t("label.money_order"))
         self.spell_display_count_label.config(text=self.t("label.spell_display_count"))
         self.spell_render_mode_label.config(text=self.t("label.spell_render_mode"))
+        self.show_spell_level_headers_check.config(text=self.t("spell.show_level_headers"))
         self.hp_font_size_label.config(text=self.t("label.hp_font_size"))
         self.temp_hp_font_size_label.config(text=self.t("label.temp_hp_font_size"))
         self.money_font_size_label.config(text=self.t("label.money_font_size"))
@@ -1817,6 +1844,7 @@ class HealthPointsApp:
             ]
         )
         self.spell_render_mode_combo.set(self.t(f"spell.render.{self.state.overlay.spell_render_mode}"))
+        self.show_spell_level_headers_var.set(self.state.overlay.show_spell_level_headers)
         self.hp_font_size_combo.config(values=FONT_SIZE_OPTIONS)
         self.hp_font_size_combo.set(str(self.state.overlay.hp_font_size))
         self.temp_hp_font_size_combo.config(values=FONT_SIZE_OPTIONS)
