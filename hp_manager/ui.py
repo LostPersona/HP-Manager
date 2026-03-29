@@ -73,6 +73,7 @@ class PlayerWindow:
         self.window.geometry("360x170")
         self.window.minsize(320, 150)
         self.app.apply_topmost(self.window, self.app.state.overlay.player_windows_topmost)
+        self.app.enable_transparent_background(self.window)
         self.window.configure(bg="#171717")
         self.window.protocol("WM_DELETE_WINDOW", self.close)
         self.app.apply_window_icon(self.window)
@@ -98,12 +99,20 @@ class PlayerWindow:
         self.app.unregister_player_window(self.player_id)
 
     def refresh(self, player: Player) -> None:
+        background_visible = self.app.state.overlay.player_window_background
+        base_bg = "#171717" if background_visible else TRANSPARENT_KEY
+        bar_bg = "#252525" if background_visible else TRANSPARENT_KEY
+        self.window.configure(bg=base_bg)
+        self.name_label.config(bg=base_bg)
+        self.temp_label.config(bg=base_bg)
+        self.bar_canvas.config(bg=bar_bg)
         self.window.title(self.app.t("player.window_title", name=player.name))
         self.name_label.config(text=player.name)
         self.hp_label.config(
             text=f"{player.current_hp} / {player.max_hp}",
             fg=_hp_text_color(player.hp_ratio),
             font=("Consolas", self.app.state.overlay.hp_font_size, "bold"),
+            bg=base_bg,
         )
         self.temp_label.config(
             text=self.app.t("player.temp_hp", temp_hp=player.temp_hp),
@@ -186,6 +195,7 @@ class OverlayWindow:
         self.canvas.coords(self.border_id, 2, overlay_top + 2, width - 2, overlay_top + overlay_height - 2)
         self.canvas.coords(self.title_id, width // 2, OVERLAY_TITLE_HEIGHT // 2)
         self.canvas.itemconfig(self.title_id, text=player.name, state="normal" if self.app.state.overlay.show_title else "hidden")
+        self.canvas.itemconfig(self.border_id, state="normal" if self.app.state.overlay.fill_window_background else "hidden")
 
     def close(self) -> None:
         if self.window.winfo_exists():
@@ -200,6 +210,7 @@ class MoneyWindow:
         self.window = tk.Toplevel(app.root)
         self.window.geometry("420x180")
         self.window.minsize(320, 140)
+        self.app.enable_transparent_background(self.window)
         self.window.configure(bg="#141414")
         self.window.protocol("WM_DELETE_WINDOW", self.close)
         self.app.apply_topmost(self.window, self.app.state.overlay.player_windows_topmost)
@@ -258,20 +269,25 @@ class MoneyWindow:
             self.window.geometry(f"420x180+{self.window.winfo_x()}+{self.window.winfo_y()}")
 
     def refresh(self, player: Player) -> None:
+        background_visible = self.app.state.overlay.money_window_background
+        base_bg = "#141414" if background_visible else TRANSPARENT_KEY
+        value_bg = "#1b1b1b" if background_visible else TRANSPARENT_KEY
+        self.window.configure(bg=base_bg)
+        self.grid.config(bg=base_bg)
         self._apply_layout()
         self.window.title(self.app.t("money.window_title", name=player.name))
-        self.title_label.config(text=self.app.t("money.window_title", name=player.name))
+        self.title_label.config(text=self.app.t("money.window_title", name=player.name), bg=base_bg)
         money = player.money
-        self.value_labels["cc"].config(text=str(money.cc))
-        self.value_labels["sc"].config(text=str(money.sc))
-        self.value_labels["gc"].config(text=str(money.gc))
-        self.abbr_labels["cc"].config(text=self.app.t("money.cc"))
-        self.abbr_labels["sc"].config(text=self.app.t("money.sc"))
-        self.abbr_labels["gc"].config(text=self.app.t("money.gc"))
+        self.value_labels["cc"].config(text=str(money.cc), bg=value_bg, bd=1 if background_visible else 0, relief="solid" if background_visible else "flat")
+        self.value_labels["sc"].config(text=str(money.sc), bg=value_bg, bd=1 if background_visible else 0, relief="solid" if background_visible else "flat")
+        self.value_labels["gc"].config(text=str(money.gc), bg=value_bg, bd=1 if background_visible else 0, relief="solid" if background_visible else "flat")
+        self.abbr_labels["cc"].config(text=self.app.t("money.cc"), bg=base_bg)
+        self.abbr_labels["sc"].config(text=self.app.t("money.sc"), bg=base_bg)
+        self.abbr_labels["gc"].config(text=self.app.t("money.gc"), bg=base_bg)
         for label in self.value_labels.values():
             label.config(font=("Consolas", self.app.state.overlay.money_font_size, "bold"))
         for key in ("cc", "sc", "gc"):
-            self.app.refresh_coin_widget(self.icon_widgets[key], key=key, size=42, background="#141414")
+            self.app.refresh_coin_widget(self.icon_widgets[key], key=key, size=42, background=base_bg)
 
     def close(self) -> None:
         if self.window.winfo_exists():
@@ -371,6 +387,7 @@ class SpellSlotsWindow:
         self.window = tk.Toplevel(app.root)
         self.window.geometry("840x260")
         self.window.minsize(420, 220)
+        self.app.enable_transparent_background(self.window)
         self.window.configure(bg="#090909")
         self.window.protocol("WM_DELETE_WINDOW", self.close)
         self.app.apply_topmost(self.window, self.app.state.overlay.player_windows_topmost)
@@ -521,7 +538,13 @@ class SpellSlotsWindow:
     def refresh(self, player: Player) -> None:
         self._apply_layout(player)
         self.window.title(self.app.t("spell.window_title", name=player.name))
-        self.title_label.config(text=self.app.t("spell.window_title", name=player.name))
+        background_visible = self.app.state.overlay.spell_window_background
+        base_bg = "#090909" if background_visible else TRANSPARENT_KEY
+        title_bg = "#0d0d0d" if background_visible else TRANSPARENT_KEY
+        cell_bg = "#040404" if background_visible else TRANSPARENT_KEY
+        self.window.configure(bg=base_bg)
+        self.board.config(bg=base_bg)
+        self.title_label.config(text=self.app.t("spell.window_title", name=player.name), bg=base_bg)
         render_mode = self.app.state.overlay.spell_render_mode
         pip_scale = self.app.state.overlay.spell_pip_scale / 100
         pip_size = max(10, int(round(18 * pip_scale)))
@@ -529,21 +552,24 @@ class SpellSlotsWindow:
             slot = player.spell_slots[level]
             self.slot_titles[level].config(
                 text=SPELL_SLOT_ROMAN[level],
-                bd=2,
-                relief="solid",
-                highlightbackground="#9d6b2f",
+                bg=title_bg,
+                bd=2 if background_visible else 0,
+                relief="solid" if background_visible else "flat",
+                highlightbackground="#9d6b2f" if background_visible else TRANSPARENT_KEY,
                 font=("Segoe UI Semibold", self.app.state.overlay.spell_level_font_size),
             )
-            self.slot_cells[level].config(highlightbackground="#9d6b2f")
+            self.slot_cells[level].config(bg=cell_bg, bd=2 if background_visible else 0, relief="solid" if background_visible else "flat", highlightbackground="#9d6b2f" if background_visible else TRANSPARENT_KEY)
             if render_mode == "text":
                 self.slot_pip_frames[level].pack_forget()
                 self.slot_values[level].config(
                     text=f"{slot.current} / {slot.maximum}",
+                    bg=cell_bg,
                     font=("Consolas", self.app.state.overlay.spell_font_size, "bold"),
                 )
                 self.slot_values[level].pack(expand=True, fill="both")
             else:
                 self.slot_values[level].pack_forget()
+                self.slot_pip_frames[level].config(bg=cell_bg)
                 self.slot_pip_frames[level].pack(expand=True)
                 max_slots = max(0, slot.maximum)
                 current_slots = max(0, min(max_slots, slot.current))
@@ -555,7 +581,7 @@ class SpellSlotsWindow:
                         pip.grid_remove()
                         continue
                     pip.grid(row=idx // grid_side, column=idx % grid_side, padx=4, pady=4)
-                    pip.config(width=pip_size, height=pip_size)
+                    pip.config(width=pip_size, height=pip_size, bg=cell_bg)
                     fill = "#53f4ff" if idx < current_slots else "#223841"
                     outline = "#abfbff" if idx < current_slots else "#4b646d"
                     inset = max(2, pip_size // 8)
@@ -904,6 +930,10 @@ class HealthPointsApp:
         self.overlay_show_title_var = tk.BooleanVar(value=self.state.overlay.show_title)
         self.player_windows_topmost_var = tk.BooleanVar(value=self.state.overlay.player_windows_topmost)
         self.fill_windows_topmost_var = tk.BooleanVar(value=self.state.overlay.fill_windows_topmost)
+        self.player_window_background_var = tk.BooleanVar(value=self.state.overlay.player_window_background)
+        self.money_window_background_var = tk.BooleanVar(value=self.state.overlay.money_window_background)
+        self.spell_window_background_var = tk.BooleanVar(value=self.state.overlay.spell_window_background)
+        self.fill_window_background_var = tk.BooleanVar(value=self.state.overlay.fill_window_background)
         self.layout_mode = ""
         self.sync_after_id: str | None = None
         self.sync_result_after_id: str | None = None
@@ -985,6 +1015,12 @@ class HealthPointsApp:
     def apply_topmost(self, window: tk.Misc, enabled: bool) -> None:
         try:
             window.attributes("-topmost", enabled)
+        except tk.TclError:
+            return
+
+    def enable_transparent_background(self, window: tk.Misc) -> None:
+        try:
+            window.wm_attributes("-transparentcolor", TRANSPARENT_KEY)
         except tk.TclError:
             return
 
@@ -1420,6 +1456,33 @@ class HealthPointsApp:
         )
         self.fill_windows_topmost_check.grid(row=15, column=0, columnspan=2, sticky="w", pady=(8, 0))
 
+        self.window_backgrounds_label = ttk.Label(card)
+        self.window_backgrounds_label.grid(row=16, column=0, columnspan=2, sticky="w", pady=(14, 0))
+        self.player_window_background_check = ttk.Checkbutton(
+            card,
+            variable=self.player_window_background_var,
+            command=self.save_overlay_settings,
+        )
+        self.player_window_background_check.grid(row=17, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        self.money_window_background_check = ttk.Checkbutton(
+            card,
+            variable=self.money_window_background_var,
+            command=self.save_overlay_settings,
+        )
+        self.money_window_background_check.grid(row=18, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        self.spell_window_background_check = ttk.Checkbutton(
+            card,
+            variable=self.spell_window_background_var,
+            command=self.save_overlay_settings,
+        )
+        self.spell_window_background_check.grid(row=19, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        self.fill_window_background_check = ttk.Checkbutton(
+            card,
+            variable=self.fill_window_background_var,
+            command=self.save_overlay_settings,
+        )
+        self.fill_window_background_check.grid(row=20, column=0, columnspan=2, sticky="w", pady=(8, 0))
+
     def _build_status_bar(self, parent: ttk.Frame) -> None:
         ttk.Label(parent, textvariable=self.status_var, style="Muted.TLabel").grid(row=3, column=0, columnspan=2, sticky="ew", pady=(14, 0))
 
@@ -1493,6 +1556,10 @@ class HealthPointsApp:
         self.state.overlay.show_title = self.overlay_show_title_var.get()
         self.state.overlay.player_windows_topmost = self.player_windows_topmost_var.get()
         self.state.overlay.fill_windows_topmost = self.fill_windows_topmost_var.get()
+        self.state.overlay.player_window_background = self.player_window_background_var.get()
+        self.state.overlay.money_window_background = self.money_window_background_var.get()
+        self.state.overlay.spell_window_background = self.spell_window_background_var.get()
+        self.state.overlay.fill_window_background = self.fill_window_background_var.get()
         save_state(self.state)
         self.refresh_spell_mode_controls()
         self.refresh_player_windows()
@@ -1718,6 +1785,7 @@ class HealthPointsApp:
         self.spell_cell_scale_text_label.config(text=self.t("label.spell_cell_scale"))
         self.spell_pip_scale_label.config(text=self.t("label.spell_pip_scale"))
         self.window_behavior_label.config(text=self.t("label.window_behavior"))
+        self.window_backgrounds_label.config(text=self.t("label.window_backgrounds"))
         self.overlay_ratio_combo.config(
             values=[
                 self.t("overlay.aspect.1:1"),
@@ -1767,8 +1835,16 @@ class HealthPointsApp:
         self.overlay_show_title_var.set(self.state.overlay.show_title)
         self.player_windows_topmost_check.config(text=self.t("overlay.player_windows_topmost"))
         self.fill_windows_topmost_check.config(text=self.t("overlay.fill_windows_topmost"))
+        self.player_window_background_check.config(text=self.t("overlay.player_window_background"))
+        self.money_window_background_check.config(text=self.t("overlay.money_window_background"))
+        self.spell_window_background_check.config(text=self.t("overlay.spell_window_background"))
+        self.fill_window_background_check.config(text=self.t("overlay.fill_window_background"))
         self.player_windows_topmost_var.set(self.state.overlay.player_windows_topmost)
         self.fill_windows_topmost_var.set(self.state.overlay.fill_windows_topmost)
+        self.player_window_background_var.set(self.state.overlay.player_window_background)
+        self.money_window_background_var.set(self.state.overlay.money_window_background)
+        self.spell_window_background_var.set(self.state.overlay.spell_window_background)
+        self.fill_window_background_var.set(self.state.overlay.fill_window_background)
         if self.state.sync.visible:
             self.sync_card.grid()
         else:

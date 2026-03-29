@@ -232,6 +232,10 @@ class OverlaySettings:
     panel_visible: bool = False
     player_windows_topmost: bool = True
     fill_windows_topmost: bool = True
+    player_window_background: bool = True
+    money_window_background: bool = True
+    spell_window_background: bool = True
+    fill_window_background: bool = True
     money_layout: str = "stacked"
     money_order: str = "cc_sc_gc"
     spell_display_count: int = 6
@@ -279,6 +283,10 @@ class OverlaySettings:
             "panel_visible": self.panel_visible,
             "player_windows_topmost": self.player_windows_topmost,
             "fill_windows_topmost": self.fill_windows_topmost,
+            "player_window_background": self.player_window_background,
+            "money_window_background": self.money_window_background,
+            "spell_window_background": self.spell_window_background,
+            "fill_window_background": self.fill_window_background,
             "money_layout": self.money_layout if self.money_layout in self.valid_money_layouts() else "stacked",
             "money_order": self.money_order if self.money_order in self.valid_money_orders() else "cc_sc_gc",
             "spell_display_count": self.clean_spell_display_count(self.spell_display_count),
@@ -314,6 +322,10 @@ class OverlaySettings:
             panel_visible=bool(data.get("panel_visible", False)),
             player_windows_topmost=bool(data.get("player_windows_topmost", True)),
             fill_windows_topmost=bool(data.get("fill_windows_topmost", True)),
+            player_window_background=bool(data.get("player_window_background", True)),
+            money_window_background=bool(data.get("money_window_background", True)),
+            spell_window_background=bool(data.get("spell_window_background", True)),
+            fill_window_background=bool(data.get("fill_window_background", True)),
             money_layout=money_layout,
             money_order=money_order,
             spell_display_count=cls.clean_spell_display_count(data.get("spell_display_count")),
