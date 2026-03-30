@@ -64,6 +64,23 @@ class InitiativeObsWindow:
         slot_count = 12
         return side_padding + slot_width * slot_count + card_gap * (slot_count - 1)
 
+    def _visible_combatants(self, state: object) -> list[tuple[int, InitiativeCombatant]]:
+        combatants = self.tracker.app.state.initiative.combatants
+        if not combatants:
+            return []
+        if not self.tracker.app.state.initiative.obs_fixed_width or len(combatants) <= 12:
+            return list(enumerate(combatants))
+
+        start_index = 0
+        if self.tracker.app.state.initiative.started:
+            start_index = max(0, min(self.tracker.app.state.initiative.current_turn_index, len(combatants) - 1))
+
+        ordered: list[tuple[int, InitiativeCombatant]] = []
+        for offset in range(min(12, len(combatants))):
+            actual_index = (start_index + offset) % len(combatants)
+            ordered.append((actual_index, combatants[actual_index]))
+        return ordered
+
     def _required_height(self, combatants: list[InitiativeCombatant], current_initiative: int | None) -> int:
         if not combatants:
             return 220
@@ -110,8 +127,8 @@ class InitiativeObsWindow:
         for child in self.cards_frame.winfo_children():
             child.destroy()
 
-        combatants = state.combatants
-        if not combatants:
+        visible_combatants = self._visible_combatants(state)
+        if not visible_combatants:
             empty = tk.Label(
                 self.cards_frame,
                 bg="#12161d",
@@ -124,8 +141,8 @@ class InitiativeObsWindow:
             empty.pack(fill="both", expand=True)
             return
 
-        for index, combatant in enumerate(combatants):
-            is_current = state.started and index == state.current_turn_index
+        for actual_index, combatant in visible_combatants:
+            is_current = state.started and actual_index == state.current_turn_index
             is_same_turn = current_initiative is not None and combatant.initiative == current_initiative
             card_bg = "#25241e" if is_current else "#22211b" if is_same_turn else "#171c24"
             outline = "#e4c16a" if is_current else "#c79761" if is_same_turn else "#2b3440"
