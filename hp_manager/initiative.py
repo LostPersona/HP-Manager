@@ -57,6 +57,18 @@ class InitiativeObsWindow:
 
         self.refresh()
 
+    def _required_width(self, combatants: list[InitiativeCombatant], current_initiative: int | None) -> int:
+        if not combatants:
+            return 520
+        side_padding = 36
+        card_gap = 10
+        card_widths = []
+        for combatant in combatants:
+            is_same_turn = current_initiative is not None and combatant.initiative == current_initiative
+            portrait_size = 132 if is_same_turn else 112
+            card_widths.append(portrait_size + 28)
+        return max(520, side_padding + sum(card_widths) + card_gap * max(0, len(card_widths) - 1))
+
     def refresh(self) -> None:
         state = self.tracker.app.state.initiative
         background_visible = state.obs_background
@@ -64,6 +76,13 @@ class InitiativeObsWindow:
         self.window.title(self.tracker.t("initiative.obs_title"))
         current = self.tracker.current_combatant()
         current_initiative = current.initiative if current is not None and state.started else None
+        required_width = self._required_width(state.combatants, current_initiative)
+        self.window.minsize(required_width, 220)
+        current_width = self.window.winfo_width()
+        if current_width <= 1:
+            current_width = self.window.winfo_reqwidth()
+        if current_width < required_width:
+            self.window.geometry(f"{required_width}x{max(220, self.window.winfo_height())}+{self.window.winfo_x()}+{self.window.winfo_y()}")
         self.window.configure(bg=base_bg)
         self.header.configure(bg=base_bg)
         self.cards_frame.configure(bg=base_bg)
