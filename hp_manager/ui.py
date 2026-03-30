@@ -212,6 +212,7 @@ class MoneyWindow:
     def __init__(self, app: "HealthPointsApp", player: Player) -> None:
         self.app = app
         self.player_id = player.player_id
+        self._layout_signature: tuple[str, tuple[str, ...]] | None = None
         self.window = tk.Toplevel(app.root)
         self.window.geometry("420x180")
         self.window.minsize(320, 140)
@@ -246,6 +247,11 @@ class MoneyWindow:
     def _apply_layout(self) -> None:
         inline = self.app.state.overlay.money_layout == "inline"
         coin_order = self.app.money_coin_keys()
+        layout_signature = ("inline" if inline else "stacked", tuple(coin_order))
+        if layout_signature == self._layout_signature:
+            return
+        self._layout_signature = layout_signature
+
         for widget in [*self.icon_widgets.values(), *self.value_labels.values(), *self.abbr_labels.values()]:
             widget.grid_forget()
 
@@ -260,8 +266,8 @@ class MoneyWindow:
                 self.icon_widgets[key].grid(row=0, column=base_col, sticky="w", padx=(0 if idx == 0 else 12, 8), pady=6)
                 self.value_labels[key].grid(row=0, column=base_col + 1, sticky="ew", pady=6, ipadx=10, ipady=8)
                 self.abbr_labels[key].grid(row=0, column=base_col + 2, sticky="w", padx=(8, 0), pady=6)
-            self.window.minsize(560, 120)
-            self.window.geometry(f"640x140+{self.window.winfo_x()}+{self.window.winfo_y()}")
+            min_width = 560
+            min_height = 120
         else:
             for column in range(3):
                 self.grid.columnconfigure(column, weight=0)
@@ -270,8 +276,20 @@ class MoneyWindow:
                 self.icon_widgets[key].grid(row=row, column=0, sticky="w", padx=(0, 12), pady=6)
                 self.value_labels[key].grid(row=row, column=1, sticky="ew", pady=6, ipadx=14, ipady=8)
                 self.abbr_labels[key].grid(row=row, column=2, sticky="w", padx=(12, 0), pady=6)
-            self.window.minsize(320, 140)
-            self.window.geometry(f"420x180+{self.window.winfo_x()}+{self.window.winfo_y()}")
+            min_width = 320
+            min_height = 140
+
+        self.window.minsize(min_width, min_height)
+        current_width = self.window.winfo_width()
+        current_height = self.window.winfo_height()
+        if current_width <= 1:
+            current_width = self.window.winfo_reqwidth()
+        if current_height <= 1:
+            current_height = self.window.winfo_reqheight()
+        if current_width < min_width or current_height < min_height:
+            self.window.geometry(
+                f"{max(min_width, current_width)}x{max(min_height, current_height)}+{self.window.winfo_x()}+{self.window.winfo_y()}"
+            )
 
     def refresh(self, player: Player) -> None:
         background_visible = self.app.state.overlay.money_window_background
