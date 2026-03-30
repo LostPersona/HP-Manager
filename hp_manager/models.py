@@ -381,7 +381,7 @@ class InitiativeState:
     started: bool = False
     obs_topmost: bool = True
     obs_background: bool = True
-    obs_fixed_width: bool = False
+    obs_visible_slots: int = 12
 
     def __post_init__(self) -> None:
         self.combatants = [
@@ -391,6 +391,7 @@ class InitiativeState:
         ]
         self.round_number = max(1, _clean_int(self.round_number, 1))
         self.current_turn_index = max(0, _clean_int(self.current_turn_index, 0))
+        self.obs_visible_slots = max(4, min(12, _clean_int(self.obs_visible_slots, 12)))
         if self.combatants:
             self.current_turn_index = min(self.current_turn_index, len(self.combatants) - 1)
         else:
@@ -405,7 +406,7 @@ class InitiativeState:
             "started": self.started,
             "obs_topmost": self.obs_topmost,
             "obs_background": self.obs_background,
-            "obs_fixed_width": self.obs_fixed_width,
+            "obs_visible_slots": self.obs_visible_slots,
         }
 
     @classmethod
@@ -423,7 +424,7 @@ class InitiativeState:
             started=bool(data.get("started", False)),
             obs_topmost=bool(data.get("obs_topmost", True)),
             obs_background=bool(data.get("obs_background", True)),
-            obs_fixed_width=bool(data.get("obs_fixed_width", False)),
+            obs_visible_slots=max(4, min(12, _clean_int(data.get("obs_visible_slots"), 12))),
         )
 
 

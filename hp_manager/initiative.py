@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
 PORTRAIT_EXTENSIONS = {".png", ".gif", ".ppm", ".pgm"}
 TRANSPARENT_KEY = "#00ff00"
+OBS_SLOT_OPTIONS = tuple(str(value) for value in range(4, 13))
 
 
 def _safe_int(value: str | int, default: int = 0) -> int:
@@ -57,18 +58,18 @@ class InitiativeObsWindow:
 
         self.refresh()
 
-    def _fixed_width(self) -> int:
+    def _fixed_width(self, slot_count: int) -> int:
         side_padding = 36
         card_gap = 10
         slot_width = 132 + 28
-        slot_count = 12
         return side_padding + slot_width * slot_count + card_gap * (slot_count - 1)
 
     def _visible_combatants(self, state: object) -> list[tuple[int, InitiativeCombatant]]:
         combatants = self.tracker.app.state.initiative.combatants
         if not combatants:
             return []
-        if not self.tracker.app.state.initiative.obs_fixed_width or len(combatants) <= 12:
+        slot_count = self.tracker.app.state.initiative.obs_visible_slots
+        if len(combatants) <= slot_count:
             return list(enumerate(combatants))
 
         start_index = 0
@@ -76,7 +77,7 @@ class InitiativeObsWindow:
             start_index = max(0, min(self.tracker.app.state.initiative.current_turn_index, len(combatants) - 1))
 
         ordered: list[tuple[int, InitiativeCombatant]] = []
-        for offset in range(min(12, len(combatants))):
+        for offset in range(min(slot_count, len(combatants))):
             actual_index = (start_index + offset) % len(combatants)
             ordered.append((actual_index, combatants[actual_index]))
         return ordered
@@ -100,7 +101,7 @@ class InitiativeObsWindow:
         current = self.tracker.current_combatant()
         current_initiative = current.initiative if current is not None and state.started else None
         required_height = self._required_height(state.combatants, current_initiative)
-        min_width = self._fixed_width() if state.obs_fixed_width else 520
+        min_width = self._fixed_width(state.obs_visible_slots)
         self.window.minsize(min_width, required_height)
         current_width = self.window.winfo_width()
         current_height = self.window.winfo_height()
@@ -108,7 +109,7 @@ class InitiativeObsWindow:
             current_width = self.window.winfo_reqwidth()
         if current_height <= 1:
             current_height = self.window.winfo_reqheight()
-        target_width = self._fixed_width() if state.obs_fixed_width else current_width
+        target_width = self._fixed_width(state.obs_visible_slots)
         target_height = max(required_height, current_height)
         if target_width != current_width or target_height != current_height:
             self.window.geometry(f"{target_width}x{target_height}+{self.window.winfo_x()}+{self.window.winfo_y()}")
@@ -303,7 +304,7 @@ class InitiativeTrackerWindow:
         self.source_player_var = tk.StringVar(value=player_names[0])
         self.obs_topmost_var = tk.BooleanVar(value=self.app.state.initiative.obs_topmost)
         self.obs_background_var = tk.BooleanVar(value=self.app.state.initiative.obs_background)
-        self.obs_fixed_width_var = tk.BooleanVar(value=self.app.state.initiative.obs_fixed_width)
+        self.obs_visible_slots_var = tk.StringVar(value=str(self.app.state.initiative.obs_visible_slots))
 
         self.row_widgets: dict[str, InitiativeCombatantRow] = {}
         self.obs_window: InitiativeObsWindow | None = None
@@ -390,8 +391,17 @@ class InitiativeTrackerWindow:
         self.obs_topmost_check.grid(row=1, column=0, columnspan=6, sticky="w", pady=(10, 0))
         self.obs_background_check = ttk.Checkbutton(top_right, variable=self.obs_background_var, command=self.toggle_obs_background)
         self.obs_background_check.grid(row=2, column=0, columnspan=6, sticky="w", pady=(8, 0))
-        self.obs_fixed_width_check = ttk.Checkbutton(top_right, variable=self.obs_fixed_width_var, command=self.toggle_obs_fixed_width)
-        self.obs_fixed_width_check.grid(row=3, column=0, columnspan=6, sticky="w", pady=(8, 0))
+        self.obs_visible_slots_label = ttk.Label(top_right)
+        self.obs_visible_slots_label.grid(row=3, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        self.obs_visible_slots_combo = ttk.Combobox(
+            top_right,
+            state="readonly",
+            values=OBS_SLOT_OPTIONS,
+            textvariable=self.obs_visible_slots_var,
+            width=6,
+        )
+        self.obs_visible_slots_combo.grid(row=3, column=3, columnspan=3, sticky="w", pady=(8, 0))
+        self.obs_visible_slots_combo.bind("<<ComboboxSelected>>", lambda _event: self.change_obs_visible_slots())
 
         self.encounter_card = ttk.LabelFrame(container, style="Section.TLabelframe", padding=10)
         self.encounter_card.grid(row=2, column=0, sticky="nsew", padx=(0, 8))
@@ -506,10 +516,10 @@ class InitiativeTrackerWindow:
         )
         self.obs_topmost_check.config(text=self.t("initiative.obs_topmost"))
         self.obs_background_check.config(text=self.t("initiative.obs_background"))
-        self.obs_fixed_width_check.config(text=self.t("initiative.obs_fixed_width"))
+        self.obs_visible_slots_label.config(text=self.t("initiative.obs_visible_slots"))
         self.obs_topmost_var.set(self.app.state.initiative.obs_topmost)
         self.obs_background_var.set(self.app.state.initiative.obs_background)
-        self.obs_fixed_width_var.set(self.app.state.initiative.obs_fixed_width)
+        self.obs_visible_slots_var.set(str(self.app.state.initiative.obs_visible_slots))
         self.encounter_card.config(text=self.t("initiative.card.encounter"))
         self.encounter_header.config(text=self.encounter_summary_text())
         self.library_card.config(text=self.t("initiative.card.library"))
@@ -892,8 +902,8 @@ class InitiativeTrackerWindow:
             self.obs_window.refresh()
         self.persist(self.t("initiative.status.obs_settings_saved"))
 
-    def toggle_obs_fixed_width(self) -> None:
-        self.app.state.initiative.obs_fixed_width = self.obs_fixed_width_var.get()
+    def change_obs_visible_slots(self) -> None:
+        self.app.state.initiative.obs_visible_slots = max(4, min(12, _safe_int(self.obs_visible_slots_var.get(), 12)))
         if self.obs_window is not None:
             self.obs_window.refresh()
         self.persist(self.t("initiative.status.obs_settings_saved"))
