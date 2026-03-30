@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
 
 PORTRAIT_EXTENSIONS = {".png", ".gif", ".ppm", ".pgm"}
+TRANSPARENT_KEY = "#00ff00"
 
 
 def _safe_int(value: str | int, default: int = 0) -> int:
@@ -41,6 +42,7 @@ class InitiativeObsWindow:
         self.window.protocol("WM_DELETE_WINDOW", self.close)
         self.tracker.app.apply_window_icon(self.window)
         self.tracker.app.apply_topmost(self.window, self.tracker.app.state.initiative.obs_topmost)
+        self.tracker.app.enable_transparent_background(self.window)
 
         self.header = tk.Frame(self.window, bg="#0e1014")
         self.header.pack(fill="x", padx=18, pady=(16, 10))
@@ -57,13 +59,21 @@ class InitiativeObsWindow:
 
     def refresh(self) -> None:
         state = self.tracker.app.state.initiative
+        background_visible = state.obs_background
+        base_bg = "#0e1014" if background_visible else TRANSPARENT_KEY
         self.window.title(self.tracker.t("initiative.obs_title"))
         current = self.tracker.current_combatant()
+        current_initiative = current.initiative if current is not None and state.started else None
+        self.window.configure(bg=base_bg)
+        self.header.configure(bg=base_bg)
+        self.cards_frame.configure(bg=base_bg)
         self.round_label.config(text=self.tracker.t("initiative.round_label", round_number=state.round_number))
         if current is not None and state.started:
             self.current_label.config(text=self.tracker.t("initiative.current_turn", name=current.name))
         else:
             self.current_label.config(text=self.tracker.t("initiative.not_started"))
+        self.round_label.config(bg=base_bg)
+        self.current_label.config(bg=base_bg)
         self.tracker.app.apply_topmost(self.window, state.obs_topmost)
 
         for child in self.cards_frame.winfo_children():
@@ -85,36 +95,32 @@ class InitiativeObsWindow:
 
         for index, combatant in enumerate(combatants):
             is_current = state.started and index == state.current_turn_index
+            is_same_turn = current_initiative is not None and combatant.initiative == current_initiative
+            card_bg = "#25241e" if is_current else "#22211b" if is_same_turn else "#171c24"
+            outline = "#e4c16a" if is_current else "#c79761" if is_same_turn else "#2b3440"
+            portrait_size = 132 if is_same_turn else 112
+            top_padding = 0 if is_same_turn else 20
             card = tk.Frame(
                 self.cards_frame,
-                bg="#1f2c1d" if is_current else "#171c24",
+                bg=card_bg,
                 highlightthickness=2,
-                highlightbackground="#8de17c" if is_current else "#2b3440",
+                highlightbackground=outline,
             )
-            card.pack(side="left", fill="y", padx=(0, 10))
+            card.pack(side="left", fill="y", padx=(0, 10), pady=(top_padding, 0))
 
-            portrait = self.tracker.create_portrait_widget(card, combatant.portrait_ref, size=112, background=card["bg"])
-            portrait.pack(padx=12, pady=(12, 10))
+            portrait = self.tracker.create_portrait_widget(card, combatant.portrait_ref, size=portrait_size, background=card["bg"])
+            portrait.pack(padx=12, pady=(12, 10 if is_same_turn else 12))
 
             name_label = tk.Label(
                 card,
                 bg=card["bg"],
                 fg="#f4f5f7",
                 text=combatant.name,
-                font=("Segoe UI Semibold", 12),
+                font=("Segoe UI Semibold", 13 if is_same_turn else 12),
                 width=14,
                 anchor="center",
             )
-            name_label.pack(fill="x", padx=10)
-
-            initiative_label = tk.Label(
-                card,
-                bg=card["bg"],
-                fg="#ffdb87",
-                text=self.tracker.t("initiative.initiative_badge", initiative=combatant.initiative),
-                font=("Consolas", 16, "bold"),
-            )
-            initiative_label.pack(pady=(6, 12))
+            name_label.pack(fill="x", padx=10, pady=(0, 14 if is_same_turn else 18))
 
     def close(self) -> None:
         if self.window.winfo_exists():
@@ -248,6 +254,7 @@ class InitiativeTrackerWindow:
         player_names = [player.name for player in self.app.state.players] or [""]
         self.source_player_var = tk.StringVar(value=player_names[0])
         self.obs_topmost_var = tk.BooleanVar(value=self.app.state.initiative.obs_topmost)
+        self.obs_background_var = tk.BooleanVar(value=self.app.state.initiative.obs_background)
 
         self.row_widgets: dict[str, InitiativeCombatantRow] = {}
         self.obs_window: InitiativeObsWindow | None = None
@@ -332,6 +339,8 @@ class InitiativeTrackerWindow:
 
         self.obs_topmost_check = ttk.Checkbutton(top_right, variable=self.obs_topmost_var, command=self.toggle_obs_topmost)
         self.obs_topmost_check.grid(row=1, column=0, columnspan=6, sticky="w", pady=(10, 0))
+        self.obs_background_check = ttk.Checkbutton(top_right, variable=self.obs_background_var, command=self.toggle_obs_background)
+        self.obs_background_check.grid(row=2, column=0, columnspan=6, sticky="w", pady=(8, 0))
 
         self.encounter_card = ttk.LabelFrame(container, style="Section.TLabelframe", padding=10)
         self.encounter_card.grid(row=2, column=0, sticky="nsew", padx=(0, 8))
@@ -445,6 +454,9 @@ class InitiativeTrackerWindow:
             text=self.t("initiative.action.hide_obs") if self.obs_window is not None else self.t("initiative.action.show_obs")
         )
         self.obs_topmost_check.config(text=self.t("initiative.obs_topmost"))
+        self.obs_background_check.config(text=self.t("initiative.obs_background"))
+        self.obs_topmost_var.set(self.app.state.initiative.obs_topmost)
+        self.obs_background_var.set(self.app.state.initiative.obs_background)
         self.encounter_card.config(text=self.t("initiative.card.encounter"))
         self.encounter_header.config(text=self.encounter_summary_text())
         self.library_card.config(text=self.t("initiative.card.library"))
@@ -817,6 +829,12 @@ class InitiativeTrackerWindow:
 
     def toggle_obs_topmost(self) -> None:
         self.app.state.initiative.obs_topmost = self.obs_topmost_var.get()
+        if self.obs_window is not None:
+            self.obs_window.refresh()
+        self.persist(self.t("initiative.status.obs_settings_saved"))
+
+    def toggle_obs_background(self) -> None:
+        self.app.state.initiative.obs_background = self.obs_background_var.get()
         if self.obs_window is not None:
             self.obs_window.refresh()
         self.persist(self.t("initiative.status.obs_settings_saved"))

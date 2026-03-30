@@ -380,6 +380,7 @@ class InitiativeState:
     round_number: int = 1
     started: bool = False
     obs_topmost: bool = True
+    obs_background: bool = True
 
     def __post_init__(self) -> None:
         self.combatants = [
@@ -402,6 +403,7 @@ class InitiativeState:
             "round_number": self.round_number,
             "started": self.started,
             "obs_topmost": self.obs_topmost,
+            "obs_background": self.obs_background,
         }
 
     @classmethod
@@ -418,6 +420,7 @@ class InitiativeState:
             round_number=max(1, _clean_int(data.get("round_number"), 1)),
             started=bool(data.get("started", False)),
             obs_topmost=bool(data.get("obs_topmost", True)),
+            obs_background=bool(data.get("obs_background", True)),
         )
 
 
