@@ -69,6 +69,17 @@ class InitiativeObsWindow:
             card_widths.append(portrait_size + 28)
         return max(520, side_padding + sum(card_widths) + card_gap * max(0, len(card_widths) - 1))
 
+    def _required_height(self, combatants: list[InitiativeCombatant], current_initiative: int | None) -> int:
+        if not combatants:
+            return 220
+        largest_portrait = max(
+            132 if current_initiative is not None and combatant.initiative == current_initiative else 112
+            for combatant in combatants
+        )
+        header_block = 72
+        card_vertical_space = largest_portrait + 64
+        return max(220, header_block + card_vertical_space + 18)
+
     def refresh(self) -> None:
         state = self.tracker.app.state.initiative
         background_visible = state.obs_background
@@ -77,12 +88,18 @@ class InitiativeObsWindow:
         current = self.tracker.current_combatant()
         current_initiative = current.initiative if current is not None and state.started else None
         required_width = self._required_width(state.combatants, current_initiative)
-        self.window.minsize(required_width, 220)
+        required_height = self._required_height(state.combatants, current_initiative)
+        self.window.minsize(required_width, required_height)
         current_width = self.window.winfo_width()
+        current_height = self.window.winfo_height()
         if current_width <= 1:
             current_width = self.window.winfo_reqwidth()
-        if current_width < required_width:
-            self.window.geometry(f"{required_width}x{max(220, self.window.winfo_height())}+{self.window.winfo_x()}+{self.window.winfo_y()}")
+        if current_height <= 1:
+            current_height = self.window.winfo_reqheight()
+        target_width = max(required_width, current_width)
+        target_height = max(required_height, current_height)
+        if target_width != current_width or target_height != current_height:
+            self.window.geometry(f"{target_width}x{target_height}+{self.window.winfo_x()}+{self.window.winfo_y()}")
         self.window.configure(bg=base_bg)
         self.header.configure(bg=base_bg)
         self.cards_frame.configure(bg=base_bg)
