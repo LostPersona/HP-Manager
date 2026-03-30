@@ -24,6 +24,11 @@ TRANSPARENT_KEY = "#00ff00"
 ICON_PATH = asset_path("app.ico")
 OVERLAY_TITLE_HEIGHT = 30
 WINDOWS_APP_ID = "LostPersona.HPManager"
+MAIN_STACK_BREAKPOINT = 1380
+HEADER_STACK_BREAKPOINT = 1260
+ADD_PLAYER_COMPACT_BREAKPOINT = 1280
+SYNC_BUTTON_STACK_BREAKPOINT = 1240
+PLAYER_ROW_COMPACT_BREAKPOINT = 980
 SPELL_SLOT_ROMAN = {1: "I", 2: "II", 3: "III", 4: "IV", 5: "V", 6: "VI", 7: "VII", 8: "VIII", 9: "IX"}
 FONT_SIZE_OPTIONS = tuple(str(size) for size in range(12, 73, 2))
 SPELL_CELL_SCALE_OPTIONS = ("80%", "100%", "120%", "140%", "160%", "180%", "200%")
@@ -689,6 +694,7 @@ class PlayerRow:
     def __init__(self, app: "HealthPointsApp", parent: ttk.Frame, player: Player) -> None:
         self.app = app
         self.player_id = player.player_id
+        self._layout_mode = ""
         self.frame = ttk.Frame(parent, padding=(10, 10), style="Card.TFrame")
         self.frame.columnconfigure(0, weight=1)
 
@@ -775,7 +781,157 @@ class PlayerRow:
         self.remove_button = ttk.Button(self.actions_secondary, command=self.remove_player)
         self.remove_button.grid(row=0, column=2, sticky="ew")
 
+        self.frame.bind("<Configure>", self._on_frame_configure)
         self.refresh(player)
+
+    def _on_frame_configure(self, event: tk.Event) -> None:
+        if event.widget is self.frame:
+            self._apply_layout(event.width)
+
+    def _layout_viewer_actions(self, compact: bool) -> None:
+        for button in (self.window_button, self.overlay_button, self.spell_window_button, self.money_window_button):
+            button.grid_forget()
+        for column in range(4):
+            self.viewer_actions.columnconfigure(column, weight=0)
+
+        if compact:
+            for column in range(2):
+                self.viewer_actions.columnconfigure(column, weight=1)
+            buttons = (self.window_button, self.overlay_button, self.spell_window_button, self.money_window_button)
+            for index, button in enumerate(buttons):
+                row = index // 2
+                column = index % 2
+                button.grid(
+                    row=row,
+                    column=column,
+                    sticky="ew",
+                    padx=(0, 6) if column == 0 else (6, 0),
+                    pady=(0, 8) if row == 0 else 0,
+                )
+        else:
+            for column in range(4):
+                self.viewer_actions.columnconfigure(column, weight=1)
+            self.window_button.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+            self.overlay_button.grid(row=0, column=1, sticky="ew", padx=8)
+            self.spell_window_button.grid(row=0, column=2, sticky="ew", padx=8)
+            self.money_window_button.grid(row=0, column=3, sticky="ew")
+
+    def _layout_stats(self, compact: bool) -> None:
+        widgets = (
+            self.current_label,
+            self.max_label,
+            self.temp_label,
+            self.step_label,
+            self.current_entry,
+            self.max_entry,
+            self.temp_entry,
+            self.delta_entry,
+        )
+        for widget in widgets:
+            widget.grid_forget()
+        for column in range(4):
+            self.stats_frame.columnconfigure(column, weight=0)
+
+        if compact:
+            for column in range(2):
+                self.stats_frame.columnconfigure(column, weight=1)
+            self.current_label.grid(row=0, column=0, sticky="w", padx=(0, 8))
+            self.max_label.grid(row=0, column=1, sticky="w", padx=(8, 0))
+            self.current_entry.grid(row=1, column=0, sticky="ew", padx=(0, 8), pady=(4, 0))
+            self.max_entry.grid(row=1, column=1, sticky="ew", padx=(8, 0), pady=(4, 0))
+            self.temp_label.grid(row=2, column=0, sticky="w", padx=(0, 8), pady=(10, 0))
+            self.step_label.grid(row=2, column=1, sticky="w", padx=(8, 0), pady=(10, 0))
+            self.temp_entry.grid(row=3, column=0, sticky="ew", padx=(0, 8), pady=(4, 0))
+            self.delta_entry.grid(row=3, column=1, sticky="ew", padx=(8, 0), pady=(4, 0))
+        else:
+            for column in range(4):
+                self.stats_frame.columnconfigure(column, weight=1)
+            self.current_label.grid(row=0, column=0, sticky="w", padx=(0, 8))
+            self.max_label.grid(row=0, column=1, sticky="w", padx=8)
+            self.temp_label.grid(row=0, column=2, sticky="w", padx=8)
+            self.step_label.grid(row=0, column=3, sticky="w", padx=(8, 0))
+            self.current_entry.grid(row=1, column=0, sticky="ew", padx=(0, 8))
+            self.max_entry.grid(row=1, column=1, sticky="ew", padx=8)
+            self.temp_entry.grid(row=1, column=2, sticky="ew", padx=8)
+            self.delta_entry.grid(row=1, column=3, sticky="ew", padx=(8, 0))
+
+    def _layout_action_rows(self, compact: bool, sync_mode: bool) -> None:
+        for button in (self.damage_button, self.heal_button, self.save_button):
+            button.grid_forget()
+        for button in (self.money_edit_button, self.spell_edit_button, self.remove_button):
+            button.grid_forget()
+        for column in range(3):
+            self.actions_primary.columnconfigure(column, weight=0)
+            self.actions_secondary.columnconfigure(column, weight=0)
+
+        if compact:
+            self.actions_primary.columnconfigure(0, weight=1)
+            self.damage_button.grid(row=0, column=0, sticky="ew")
+            self.heal_button.grid(row=1, column=0, sticky="ew", pady=(8, 0))
+            self.save_button.grid(row=2, column=0, sticky="ew", pady=(8, 0))
+
+            self.actions_secondary.columnconfigure(0, weight=1)
+            if sync_mode:
+                self.remove_button.grid(row=0, column=0, sticky="ew")
+            else:
+                self.money_edit_button.grid(row=0, column=0, sticky="ew")
+                self.spell_edit_button.grid(row=1, column=0, sticky="ew", pady=(8, 0))
+                self.remove_button.grid(row=2, column=0, sticky="ew", pady=(8, 0))
+        else:
+            for column in range(3):
+                self.actions_primary.columnconfigure(column, weight=1)
+                self.actions_secondary.columnconfigure(column, weight=1)
+            self.damage_button.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+            self.heal_button.grid(row=0, column=1, sticky="ew", padx=8)
+            self.save_button.grid(row=0, column=2, sticky="ew", padx=(8, 0))
+            if sync_mode:
+                self.remove_button.grid(row=0, column=0, columnspan=3, sticky="ew")
+            else:
+                self.money_edit_button.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+                self.spell_edit_button.grid(row=0, column=1, sticky="ew", padx=8)
+                self.remove_button.grid(row=0, column=2, sticky="ew")
+
+    def _apply_layout(self, width: int | None = None) -> None:
+        current_width = width or self.frame.winfo_width()
+        compact = current_width < PLAYER_ROW_COMPACT_BREAKPOINT
+        sync_mode = self.app.sync_mode_active()
+        mode = f"{'compact' if compact else 'wide'}:{'sync' if sync_mode else 'edit'}"
+        if mode == self._layout_mode:
+            return
+        self._layout_mode = mode
+
+        self.name_label.grid_forget()
+        self.name_entry.grid_forget()
+        self.name_value_label.grid_forget()
+        self.viewer_actions.grid_forget()
+        self.stats_frame.grid_forget()
+        self.actions_primary.grid_forget()
+        self.actions_secondary.grid_forget()
+
+        self.header_frame.columnconfigure(0, weight=0)
+        self.header_frame.columnconfigure(1, weight=1)
+        self.header_frame.columnconfigure(2, weight=0)
+
+        if sync_mode:
+            self.name_value_label.grid(row=0, column=0, columnspan=2, sticky="w")
+        else:
+            self.name_label.grid(row=0, column=0, sticky="w", padx=(0, 8))
+            self.name_entry.grid(row=0, column=1, sticky="ew")
+
+        if compact:
+            self.viewer_actions.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(10, 0))
+        else:
+            self.viewer_actions.grid(row=0, column=2, sticky="e", padx=(12, 0))
+
+        self._layout_viewer_actions(compact)
+
+        if not sync_mode:
+            self.stats_frame.grid(row=2, column=0, sticky="ew", pady=(10, 0))
+            self.actions_primary.grid(row=3, column=0, sticky="ew", pady=(10, 0))
+        self.actions_secondary.grid(row=4, column=0, sticky="ew", pady=(8, 0))
+
+        self._layout_stats(compact)
+        self._layout_action_rows(compact, sync_mode)
 
     def apply_edits(self) -> None:
         player = self.app.player_by_id(self.player_id)
@@ -887,6 +1043,7 @@ class PlayerRow:
         self.heal_button.config(text=self.app.t("action.heal"))
         self.money_edit_button.config(text=self.app.t("action.edit_money"))
         self.spell_edit_button.config(text=self.app.t("action.edit_spell_slots"))
+        self._apply_layout()
 
     def destroy(self) -> None:
         self.frame.destroy()
@@ -943,6 +1100,9 @@ class HealthPointsApp:
         self.spell_window_background_var = tk.BooleanVar(value=self.state.overlay.spell_window_background)
         self.fill_window_background_var = tk.BooleanVar(value=self.state.overlay.fill_window_background)
         self.layout_mode = ""
+        self.header_layout_mode = ""
+        self.add_player_layout_mode = ""
+        self.sync_button_layout_mode = ""
         self.sync_after_id: str | None = None
         self.sync_result_after_id: str | None = None
         self.sync_fetch_in_progress = False
@@ -1249,7 +1409,7 @@ class HealthPointsApp:
 
         top_right = ttk.Frame(container)
         top_right.grid(row=0, column=1, sticky="e")
-        top_right.columnconfigure(0, weight=1)
+        self.header_panel = top_right
 
         self.subtitle_label = ttk.Label(top_right, style="Muted.TLabel")
         self.subtitle_label.grid(row=0, column=0, columnspan=2, sticky="e")
@@ -1259,11 +1419,13 @@ class HealthPointsApp:
         self.language_combo.grid(row=1, column=1, sticky="e", pady=(8, 0))
         self.language_combo.bind("<<ComboboxSelected>>", self.change_locale)
         self.sync_toggle_button = ttk.Button(top_right, command=self.toggle_sync_visibility)
-        self.sync_toggle_button.grid(row=2, column=0, columnspan=2, sticky="e", pady=(8, 0))
         self.settings_toggle_button = ttk.Button(top_right, command=self.toggle_settings_visibility)
-        self.settings_toggle_button.grid(row=3, column=0, columnspan=2, sticky="e", pady=(8, 0))
         self.initiative_toggle_button = ttk.Button(top_right, command=self.open_initiative_tracker)
-        self.initiative_toggle_button.grid(row=4, column=0, columnspan=2, sticky="e", pady=(8, 0))
+        self.header_action_buttons = [
+            self.sync_toggle_button,
+            self.settings_toggle_button,
+            self.initiative_toggle_button,
+        ]
 
         left = ttk.Frame(container)
         left.rowconfigure(1, weight=1)
@@ -1302,10 +1464,14 @@ class HealthPointsApp:
         self.add_temp_label = ttk.Label(card)
         self.add_temp_label.grid(row=1, column=3, sticky="w")
 
-        ttk.Entry(card, textvariable=self.add_name_var).grid(row=2, column=0, sticky="ew", padx=(0, 8))
-        ttk.Entry(card, textvariable=self.add_current_var, width=8).grid(row=2, column=1, sticky="ew", padx=4)
-        ttk.Entry(card, textvariable=self.add_max_var, width=8).grid(row=2, column=2, sticky="ew", padx=4)
-        ttk.Entry(card, textvariable=self.add_temp_var, width=8).grid(row=2, column=3, sticky="ew", padx=4)
+        self.add_name_entry = ttk.Entry(card, textvariable=self.add_name_var)
+        self.add_name_entry.grid(row=2, column=0, sticky="ew", padx=(0, 8))
+        self.add_current_entry = ttk.Entry(card, textvariable=self.add_current_var, width=8)
+        self.add_current_entry.grid(row=2, column=1, sticky="ew", padx=4)
+        self.add_max_entry = ttk.Entry(card, textvariable=self.add_max_var, width=8)
+        self.add_max_entry.grid(row=2, column=2, sticky="ew", padx=4)
+        self.add_temp_entry = ttk.Entry(card, textvariable=self.add_temp_var, width=8)
+        self.add_temp_entry.grid(row=2, column=3, sticky="ew", padx=4)
         self.add_player_button = ttk.Button(card, command=self.add_player)
         self.add_player_button.grid(row=3, column=0, columnspan=4, sticky="ew", pady=(12, 0))
 
@@ -1368,12 +1534,15 @@ class HealthPointsApp:
 
         button_row = ttk.Frame(card)
         button_row.grid(row=6, column=0, columnspan=2, sticky="ew", pady=(12, 0))
+        self.sync_button_row = button_row
         self.fetch_doc_button = ttk.Button(button_row, command=self.fetch_doc_now)
-        self.fetch_doc_button.pack(side="left")
         self.apply_sync_button = ttk.Button(button_row, command=self.apply_sync_text)
-        self.apply_sync_button.pack(side="left", padx=(8, 0))
         self.load_example_button = ttk.Button(button_row, command=self.load_sync_example)
-        self.load_example_button.pack(side="left", padx=(8, 0))
+        self.sync_action_buttons = [
+            self.fetch_doc_button,
+            self.apply_sync_button,
+            self.load_example_button,
+        ]
 
     def _build_overlay_settings_card(self, parent: ttk.Frame) -> None:
         card = ttk.LabelFrame(parent, style="Section.TLabelframe", padding=14)
@@ -1506,7 +1675,8 @@ class HealthPointsApp:
         self.fill_window_background_check.grid(row=21, column=0, columnspan=2, sticky="w", pady=(8, 0))
 
     def _build_status_bar(self, parent: ttk.Frame) -> None:
-        ttk.Label(parent, textvariable=self.status_var, style="Muted.TLabel").grid(row=3, column=0, columnspan=2, sticky="ew", pady=(14, 0))
+        self.status_label = ttk.Label(parent, textvariable=self.status_var, style="Muted.TLabel")
+        self.status_label.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(14, 0))
 
     def _on_rows_configure(self, _event: object | None = None) -> None:
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
@@ -1517,21 +1687,149 @@ class HealthPointsApp:
     def _on_container_configure(self, event: tk.Event) -> None:
         self._update_main_layout(event.width)
 
+    def _layout_header(self, width: int) -> None:
+        compact = width < HEADER_STACK_BREAKPOINT
+        mode = "compact" if compact else "wide"
+        if mode == self.header_layout_mode:
+            if compact:
+                self.subtitle_label.config(anchor="w", justify="left", wraplength=max(360, width - 80))
+            else:
+                self.subtitle_label.config(anchor="e", justify="right", wraplength=min(700, max(420, width // 2)))
+            return
+        self.header_layout_mode = mode
+
+        self.title_label.grid_forget()
+        self.header_panel.grid_forget()
+        self.subtitle_label.grid_forget()
+        self.language_label.grid_forget()
+        self.language_combo.grid_forget()
+        for button in self.header_action_buttons:
+            button.grid_forget()
+
+        for column in range(3):
+            self.header_panel.columnconfigure(column, weight=0)
+
+        if compact:
+            self.title_label.grid(row=0, column=0, columnspan=2, sticky="w")
+            self.header_panel.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+            self.header_panel.columnconfigure(0, weight=0)
+            self.header_panel.columnconfigure(1, weight=1)
+            self.subtitle_label.grid(row=0, column=0, columnspan=3, sticky="w")
+            self.language_label.grid(row=1, column=0, sticky="w", pady=(8, 0), padx=(0, 8))
+            self.language_combo.grid(row=1, column=1, columnspan=2, sticky="ew", pady=(8, 0))
+            self.sync_toggle_button.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(8, 0))
+            self.settings_toggle_button.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(8, 0))
+            self.initiative_toggle_button.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(8, 0))
+            self.subtitle_label.config(anchor="w", justify="left", wraplength=max(360, width - 80))
+        else:
+            self.title_label.grid(row=0, column=0, sticky="w")
+            self.header_panel.grid(row=0, column=1, sticky="ne")
+            self.header_panel.columnconfigure(0, weight=1)
+            self.header_panel.columnconfigure(1, weight=1)
+            self.subtitle_label.grid(row=0, column=0, columnspan=2, sticky="e")
+            self.language_label.grid(row=1, column=0, sticky="e", pady=(8, 0), padx=(0, 8))
+            self.language_combo.grid(row=1, column=1, sticky="e", pady=(8, 0))
+            self.sync_toggle_button.grid(row=2, column=0, sticky="ew", pady=(8, 0))
+            self.settings_toggle_button.grid(row=2, column=1, sticky="ew", pady=(8, 0), padx=(8, 0))
+            self.initiative_toggle_button.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+            self.subtitle_label.config(anchor="e", justify="right", wraplength=min(700, max(420, width // 2)))
+
+    def _layout_add_player_card(self, width: int) -> None:
+        compact = width < ADD_PLAYER_COMPACT_BREAKPOINT
+        mode = "compact" if compact else "wide"
+        if mode == self.add_player_layout_mode:
+            return
+        self.add_player_layout_mode = mode
+
+        widgets = (
+            self.add_name_label,
+            self.add_current_label,
+            self.add_max_label,
+            self.add_temp_label,
+            self.add_name_entry,
+            self.add_current_entry,
+            self.add_max_entry,
+            self.add_temp_entry,
+            self.add_player_button,
+        )
+        for widget in widgets:
+            widget.grid_forget()
+        for column in range(4):
+            self.add_player_card.columnconfigure(column, weight=0)
+
+        if compact:
+            self.add_player_card.columnconfigure(0, weight=1)
+            self.add_player_card.columnconfigure(1, weight=1)
+            self.add_name_label.grid(row=1, column=0, columnspan=2, sticky="w")
+            self.add_name_entry.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+            self.add_current_label.grid(row=3, column=0, sticky="w", pady=(10, 0))
+            self.add_max_label.grid(row=3, column=1, sticky="w", pady=(10, 0), padx=(8, 0))
+            self.add_current_entry.grid(row=4, column=0, sticky="ew", pady=(6, 0))
+            self.add_max_entry.grid(row=4, column=1, sticky="ew", padx=(8, 0), pady=(6, 0))
+            self.add_temp_label.grid(row=5, column=0, columnspan=2, sticky="w", pady=(10, 0))
+            self.add_temp_entry.grid(row=6, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+            self.add_player_button.grid(row=7, column=0, columnspan=2, sticky="ew", pady=(12, 0))
+        else:
+            for column in range(4):
+                self.add_player_card.columnconfigure(column, weight=1)
+            self.add_name_label.grid(row=1, column=0, sticky="w")
+            self.add_current_label.grid(row=1, column=1, sticky="w")
+            self.add_max_label.grid(row=1, column=2, sticky="w")
+            self.add_temp_label.grid(row=1, column=3, sticky="w")
+            self.add_name_entry.grid(row=2, column=0, sticky="ew", padx=(0, 8))
+            self.add_current_entry.grid(row=2, column=1, sticky="ew", padx=4)
+            self.add_max_entry.grid(row=2, column=2, sticky="ew", padx=4)
+            self.add_temp_entry.grid(row=2, column=3, sticky="ew", padx=4)
+            self.add_player_button.grid(row=3, column=0, columnspan=4, sticky="ew", pady=(12, 0))
+
+    def _layout_sync_buttons(self, width: int) -> None:
+        compact = width < SYNC_BUTTON_STACK_BREAKPOINT
+        mode = "compact" if compact else "wide"
+        if mode == self.sync_button_layout_mode:
+            return
+        self.sync_button_layout_mode = mode
+
+        for button in self.sync_action_buttons:
+            button.grid_forget()
+        for column in range(3):
+            self.sync_button_row.columnconfigure(column, weight=0)
+
+        if compact:
+            self.sync_button_row.columnconfigure(0, weight=1)
+            self.fetch_doc_button.grid(row=0, column=0, sticky="ew")
+            self.apply_sync_button.grid(row=1, column=0, sticky="ew", pady=(8, 0))
+            self.load_example_button.grid(row=2, column=0, sticky="ew", pady=(8, 0))
+        else:
+            for column in range(3):
+                self.sync_button_row.columnconfigure(column, weight=1)
+            self.fetch_doc_button.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+            self.apply_sync_button.grid(row=0, column=1, sticky="ew", padx=4)
+            self.load_example_button.grid(row=0, column=2, sticky="ew", padx=(8, 0))
+
     def _update_main_layout(self, width: int | None = None) -> None:
         current_width = width or self.container.winfo_width() or self.root.winfo_width()
-        mode = "stacked" if current_width < 1380 else "wide"
+        self._layout_header(current_width)
+        self._layout_add_player_card(current_width)
+        self._layout_sync_buttons(current_width)
+
+        mode = "stacked" if current_width < MAIN_STACK_BREAKPOINT else "wide"
         self.layout_mode = mode
+        header_compact = current_width < HEADER_STACK_BREAKPOINT
+        main_row = 2 if header_compact else 1
         self.left_panel.grid_forget()
         self.right_panel.grid_forget()
+        self.status_label.grid_forget()
         show_right_panel = self.right_panel_visible()
+
+        for row in range(1, 6):
+            self.container.rowconfigure(row, weight=0)
 
         if mode == "wide":
             self.container.columnconfigure(0, weight=3 if show_right_panel else 1)
             self.container.columnconfigure(1, weight=2 if show_right_panel else 0)
-            self.container.rowconfigure(1, weight=1)
-            self.container.rowconfigure(2, weight=0)
+            self.container.rowconfigure(main_row, weight=1)
             self.left_panel.grid(
-                row=1,
+                row=main_row,
                 column=0,
                 columnspan=1 if show_right_panel else 2,
                 sticky="nsew",
@@ -1539,21 +1837,30 @@ class HealthPointsApp:
                 pady=(16, 0),
             )
             if show_right_panel:
-                self.right_panel.grid(row=1, column=1, sticky="nsew", pady=(16, 0))
+                self.right_panel.grid(row=main_row, column=1, sticky="nsew", pady=(16, 0))
+            self.status_label.grid(row=main_row + 1, column=0, columnspan=2, sticky="ew", pady=(14, 0))
         else:
             self.container.columnconfigure(0, weight=1)
             self.container.columnconfigure(1, weight=0)
-            self.container.rowconfigure(1, weight=4)
-            self.container.rowconfigure(2, weight=1 if show_right_panel else 0)
+            self.container.rowconfigure(main_row, weight=4)
+            if show_right_panel:
+                self.container.rowconfigure(main_row + 1, weight=1)
             self.left_panel.grid(
-                row=1,
+                row=main_row,
                 column=0,
                 columnspan=2,
                 sticky="nsew",
                 pady=(16, 8 if show_right_panel else 0),
             )
             if show_right_panel:
-                self.right_panel.grid(row=2, column=0, columnspan=2, sticky="nsew", pady=(8, 0))
+                self.right_panel.grid(row=main_row + 1, column=0, columnspan=2, sticky="nsew", pady=(8, 0))
+            self.status_label.grid(
+                row=main_row + (2 if show_right_panel else 1),
+                column=0,
+                columnspan=2,
+                sticky="ew",
+                pady=(14, 0),
+            )
 
     def toggle_settings_visibility(self) -> None:
         self.state.overlay.panel_visible = not self.state.overlay.panel_visible
