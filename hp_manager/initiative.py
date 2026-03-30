@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 PORTRAIT_EXTENSIONS = {".png", ".gif", ".ppm", ".pgm"}
 TRANSPARENT_KEY = "#00ff00"
 OBS_SLOT_OPTIONS = tuple(str(value) for value in range(4, 13))
+INITIATIVE_COMPACT_BREAKPOINT = 1220
 
 
 def _safe_int(value: str | int, default: int = 0) -> int:
@@ -311,9 +312,11 @@ class InitiativeTrackerWindow:
         self.portrait_cache: dict[tuple[str, int], tk.PhotoImage] = {}
         self.portrait_library: list[tuple[str, str]] = []
         self.library_refs_by_index: list[str] = []
+        self._layout_mode = ""
 
         self._build_layout()
         self.refresh_library()
+        self.window.bind("<Configure>", self._on_window_resize)
         self.refresh()
 
     def t(self, key: str, **kwargs: object) -> str:
@@ -344,55 +347,41 @@ class InitiativeTrackerWindow:
         self.subtitle_label.grid(row=0, column=1, sticky="e")
 
         top_left = ttk.Frame(container)
-        top_left.grid(row=1, column=0, sticky="ew", pady=(16, 12), padx=(0, 8))
-        top_left.columnconfigure(1, weight=1)
-        top_left.columnconfigure(4, weight=1)
+        self.top_left = top_left
 
         self.add_name_label = ttk.Label(top_left)
-        self.add_name_label.grid(row=0, column=0, sticky="w")
         self.add_name_entry = ttk.Entry(top_left, textvariable=self.add_name_var)
-        self.add_name_entry.grid(row=0, column=1, sticky="ew", padx=(8, 12))
         self.add_initiative_label = ttk.Label(top_left)
-        self.add_initiative_label.grid(row=0, column=2, sticky="w")
         self.add_initiative_entry = ttk.Entry(top_left, textvariable=self.add_initiative_var, width=8)
-        self.add_initiative_entry.grid(row=0, column=3, sticky="ew", padx=(8, 12))
         self.add_button = ttk.Button(top_left, command=self.add_combatant)
-        self.add_button.grid(row=0, column=4, sticky="ew")
 
         player_row = ttk.Frame(top_left)
-        player_row.grid(row=1, column=0, columnspan=5, sticky="ew", pady=(10, 0))
-        player_row.columnconfigure(1, weight=1)
+        self.player_row = player_row
         self.from_players_label = ttk.Label(player_row)
-        self.from_players_label.grid(row=0, column=0, sticky="w")
         self.source_player_combo = ttk.Combobox(player_row, state="readonly", textvariable=self.source_player_var)
-        self.source_player_combo.grid(row=0, column=1, sticky="ew", padx=(8, 12))
         self.add_from_player_button = ttk.Button(player_row, command=self.add_from_player)
-        self.add_from_player_button.grid(row=0, column=2, sticky="ew")
 
         top_right = ttk.Frame(container)
-        top_right.grid(row=1, column=1, sticky="ew", pady=(16, 12), padx=(8, 0))
-        for column in range(6):
-            top_right.columnconfigure(column, weight=1)
+        self.top_right = top_right
 
         self.start_button = ttk.Button(top_right, command=self.start_encounter)
-        self.start_button.grid(row=0, column=0, sticky="ew", padx=(0, 6))
         self.previous_button = ttk.Button(top_right, command=self.previous_turn)
-        self.previous_button.grid(row=0, column=1, sticky="ew", padx=6)
         self.next_button = ttk.Button(top_right, command=self.next_turn)
-        self.next_button.grid(row=0, column=2, sticky="ew", padx=6)
         self.reset_button = ttk.Button(top_right, command=self.reset_encounter)
-        self.reset_button.grid(row=0, column=3, sticky="ew", padx=6)
         self.clear_button = ttk.Button(top_right, command=self.clear_encounter)
-        self.clear_button.grid(row=0, column=4, sticky="ew", padx=6)
         self.obs_button = ttk.Button(top_right, command=self.toggle_obs_window)
-        self.obs_button.grid(row=0, column=5, sticky="ew", padx=(6, 0))
+        self.action_buttons = [
+            self.start_button,
+            self.previous_button,
+            self.next_button,
+            self.reset_button,
+            self.clear_button,
+            self.obs_button,
+        ]
 
         self.obs_topmost_check = ttk.Checkbutton(top_right, variable=self.obs_topmost_var, command=self.toggle_obs_topmost)
-        self.obs_topmost_check.grid(row=1, column=0, columnspan=6, sticky="w", pady=(10, 0))
         self.obs_background_check = ttk.Checkbutton(top_right, variable=self.obs_background_var, command=self.toggle_obs_background)
-        self.obs_background_check.grid(row=2, column=0, columnspan=6, sticky="w", pady=(8, 0))
         self.obs_visible_slots_label = ttk.Label(top_right)
-        self.obs_visible_slots_label.grid(row=3, column=0, columnspan=3, sticky="w", pady=(8, 0))
         self.obs_visible_slots_combo = ttk.Combobox(
             top_right,
             state="readonly",
@@ -400,11 +389,9 @@ class InitiativeTrackerWindow:
             textvariable=self.obs_visible_slots_var,
             width=6,
         )
-        self.obs_visible_slots_combo.grid(row=3, column=3, columnspan=3, sticky="w", pady=(8, 0))
         self.obs_visible_slots_combo.bind("<<ComboboxSelected>>", lambda _event: self.change_obs_visible_slots())
 
         self.encounter_card = ttk.LabelFrame(container, style="Section.TLabelframe", padding=10)
-        self.encounter_card.grid(row=2, column=0, sticky="nsew", padx=(0, 8))
         self.encounter_card.columnconfigure(0, weight=1)
         self.encounter_card.rowconfigure(1, weight=1)
 
@@ -423,7 +410,6 @@ class InitiativeTrackerWindow:
         self.canvas.bind("<Configure>", self._on_canvas_configure)
 
         self.library_card = ttk.LabelFrame(container, style="Section.TLabelframe", padding=10)
-        self.library_card.grid(row=2, column=1, sticky="nsew", padx=(8, 0))
         self.library_card.columnconfigure(0, weight=1)
         self.library_card.rowconfigure(4, weight=1)
 
@@ -459,27 +445,186 @@ class InitiativeTrackerWindow:
         self.library_list.bind("<Double-Button-1>", lambda _event: self.assign_selected_to_new())
 
         library_actions = ttk.Frame(self.library_card)
-        library_actions.grid(row=5, column=0, sticky="ew", pady=(10, 0))
-        for column in range(4):
-            library_actions.columnconfigure(column, weight=1)
+        self.library_actions = library_actions
 
         self.import_button = ttk.Button(library_actions, command=self.import_portraits)
-        self.import_button.grid(row=0, column=0, sticky="ew", padx=(0, 6))
         self.delete_button = ttk.Button(library_actions, command=self.delete_selected_portrait)
-        self.delete_button.grid(row=0, column=1, sticky="ew", padx=6)
         self.refresh_button = ttk.Button(library_actions, command=self.refresh_library)
-        self.refresh_button.grid(row=0, column=2, sticky="ew", padx=6)
         self.use_selected_button = ttk.Button(library_actions, command=self.assign_selected_to_new)
-        self.use_selected_button.grid(row=0, column=3, sticky="ew", padx=(6, 0))
+        self.library_action_buttons = [
+            self.import_button,
+            self.delete_button,
+            self.refresh_button,
+            self.use_selected_button,
+        ]
 
         self.status_label = ttk.Label(container, style="Muted.TLabel", textvariable=self.status_var)
         self.status_label.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(12, 0))
+        self._apply_responsive_layout(self.window.winfo_width())
 
     def _on_rows_configure(self, _event: object | None = None) -> None:
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
 
     def _on_canvas_configure(self, event: tk.Event) -> None:
         self.canvas.itemconfigure(self.rows_window, width=event.width)
+
+    def _on_window_resize(self, event: tk.Event) -> None:
+        if event.widget is self.window:
+            self._apply_responsive_layout(event.width)
+
+    def _layout_add_controls(self, compact: bool) -> None:
+        self.add_name_label.grid_forget()
+        self.add_name_entry.grid_forget()
+        self.add_initiative_label.grid_forget()
+        self.add_initiative_entry.grid_forget()
+        self.add_button.grid_forget()
+        self.player_row.grid_forget()
+        self.from_players_label.grid_forget()
+        self.source_player_combo.grid_forget()
+        self.add_from_player_button.grid_forget()
+
+        for column in range(5):
+            self.top_left.columnconfigure(column, weight=0)
+        for column in range(3):
+            self.player_row.columnconfigure(column, weight=0)
+
+        if compact:
+            self.top_left.columnconfigure(1, weight=1)
+            self.top_left.columnconfigure(2, weight=1)
+            self.top_left.columnconfigure(3, weight=1)
+            self.add_name_label.grid(row=0, column=0, sticky="w")
+            self.add_name_entry.grid(row=0, column=1, columnspan=4, sticky="ew", padx=(8, 0))
+            self.add_initiative_label.grid(row=1, column=0, sticky="w", pady=(10, 0))
+            self.add_initiative_entry.grid(row=1, column=1, sticky="ew", padx=(8, 8), pady=(10, 0))
+            self.add_button.grid(row=1, column=2, columnspan=3, sticky="ew", pady=(10, 0))
+
+            self.player_row.grid(row=2, column=0, columnspan=5, sticky="ew", pady=(12, 0))
+            self.player_row.columnconfigure(0, weight=0)
+            self.player_row.columnconfigure(1, weight=1)
+            self.player_row.columnconfigure(2, weight=0)
+            self.from_players_label.grid(row=0, column=0, columnspan=3, sticky="w")
+            self.source_player_combo.grid(row=1, column=0, columnspan=2, sticky="ew", padx=(0, 8), pady=(8, 0))
+            self.add_from_player_button.grid(row=1, column=2, sticky="ew", pady=(8, 0))
+        else:
+            self.top_left.columnconfigure(1, weight=1)
+            self.top_left.columnconfigure(4, weight=1)
+            self.add_name_label.grid(row=0, column=0, sticky="w")
+            self.add_name_entry.grid(row=0, column=1, sticky="ew", padx=(8, 12))
+            self.add_initiative_label.grid(row=0, column=2, sticky="w")
+            self.add_initiative_entry.grid(row=0, column=3, sticky="ew", padx=(8, 12))
+            self.add_button.grid(row=0, column=4, sticky="ew")
+
+            self.player_row.grid(row=1, column=0, columnspan=5, sticky="ew", pady=(10, 0))
+            self.player_row.columnconfigure(1, weight=1)
+            self.from_players_label.grid(row=0, column=0, sticky="w")
+            self.source_player_combo.grid(row=0, column=1, sticky="ew", padx=(8, 12))
+            self.add_from_player_button.grid(row=0, column=2, sticky="ew")
+
+    def _layout_action_controls(self, compact: bool) -> None:
+        for button in self.action_buttons:
+            button.grid_forget()
+        self.obs_topmost_check.grid_forget()
+        self.obs_background_check.grid_forget()
+        self.obs_visible_slots_label.grid_forget()
+        self.obs_visible_slots_combo.grid_forget()
+
+        if compact:
+            for column in range(6):
+                self.top_right.columnconfigure(column, weight=0)
+            for column in range(3):
+                self.top_right.columnconfigure(column, weight=1)
+            for index, button in enumerate(self.action_buttons):
+                row = index // 3
+                column = index % 3
+                pad_left = 0 if column == 0 else 6
+                pad_right = 0 if column == 2 else 6
+                button.grid(row=row, column=column, sticky="ew", padx=(pad_left, pad_right), pady=(0, 8) if row == 0 else 0)
+            self.obs_topmost_check.grid(row=2, column=0, columnspan=3, sticky="w", pady=(10, 0))
+            self.obs_background_check.grid(row=3, column=0, columnspan=3, sticky="w", pady=(8, 0))
+            self.obs_visible_slots_label.grid(row=4, column=0, sticky="w", pady=(8, 0))
+            self.obs_visible_slots_combo.grid(row=4, column=1, sticky="w", pady=(8, 0))
+        else:
+            for column in range(6):
+                self.top_right.columnconfigure(column, weight=1)
+            for index, button in enumerate(self.action_buttons):
+                padx = (0, 6) if index == 0 else (6, 0) if index == len(self.action_buttons) - 1 else 6
+                if isinstance(padx, int):
+                    button.grid(row=0, column=index, sticky="ew", padx=padx)
+                else:
+                    button.grid(row=0, column=index, sticky="ew", padx=padx)
+            self.obs_topmost_check.grid(row=1, column=0, columnspan=6, sticky="w", pady=(10, 0))
+            self.obs_background_check.grid(row=2, column=0, columnspan=6, sticky="w", pady=(8, 0))
+            self.obs_visible_slots_label.grid(row=3, column=0, columnspan=3, sticky="w", pady=(8, 0))
+            self.obs_visible_slots_combo.grid(row=3, column=3, columnspan=3, sticky="w", pady=(8, 0))
+
+    def _layout_library_actions(self, compact: bool) -> None:
+        self.library_actions.grid_forget()
+        for button in self.library_action_buttons:
+            button.grid_forget()
+        for column in range(4):
+            self.library_actions.columnconfigure(column, weight=0)
+
+        self.library_actions.grid(row=5, column=0, sticky="ew", pady=(10, 0))
+        if compact:
+            for column in range(2):
+                self.library_actions.columnconfigure(column, weight=1)
+            for index, button in enumerate(self.library_action_buttons):
+                row = index // 2
+                column = index % 2
+                pad_left = 0 if column == 0 else 6
+                pad_right = 0 if column == 1 else 6
+                button.grid(row=row, column=column, sticky="ew", padx=(pad_left, pad_right), pady=(0, 8) if row == 0 else 0)
+        else:
+            for column in range(4):
+                self.library_actions.columnconfigure(column, weight=1)
+            self.import_button.grid(row=0, column=0, sticky="ew", padx=(0, 6))
+            self.delete_button.grid(row=0, column=1, sticky="ew", padx=6)
+            self.refresh_button.grid(row=0, column=2, sticky="ew", padx=6)
+            self.use_selected_button.grid(row=0, column=3, sticky="ew", padx=(6, 0))
+
+    def _apply_responsive_layout(self, width: int) -> None:
+        compact = width < INITIATIVE_COMPACT_BREAKPOINT
+        mode = "compact" if compact else "wide"
+        if mode == self._layout_mode:
+            return
+        self._layout_mode = mode
+
+        self.top_left.grid_forget()
+        self.top_right.grid_forget()
+        self.encounter_card.grid_forget()
+        self.library_card.grid_forget()
+        self.status_label.grid_forget()
+
+        if compact:
+            self.container.columnconfigure(0, weight=1)
+            self.container.columnconfigure(1, weight=0)
+            self.container.rowconfigure(1, weight=0)
+            self.container.rowconfigure(2, weight=0)
+            self.container.rowconfigure(3, weight=2)
+            self.container.rowconfigure(4, weight=1)
+            self.container.rowconfigure(5, weight=0)
+            self.top_left.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(16, 10))
+            self.top_right.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(0, 12))
+            self.encounter_card.grid(row=3, column=0, columnspan=2, sticky="nsew", pady=(0, 12))
+            self.library_card.grid(row=4, column=0, columnspan=2, sticky="nsew")
+            self.status_label.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(12, 0))
+        else:
+            self.container.columnconfigure(0, weight=3)
+            self.container.columnconfigure(1, weight=2)
+            self.container.rowconfigure(1, weight=0)
+            self.container.rowconfigure(2, weight=1)
+            self.container.rowconfigure(3, weight=0)
+            self.container.rowconfigure(4, weight=0)
+            self.container.rowconfigure(5, weight=0)
+            self.top_left.grid(row=1, column=0, sticky="ew", pady=(16, 12), padx=(0, 8))
+            self.top_right.grid(row=1, column=1, sticky="ew", pady=(16, 12), padx=(8, 0))
+            self.encounter_card.grid(row=2, column=0, sticky="nsew", padx=(0, 8))
+            self.library_card.grid(row=2, column=1, sticky="nsew", padx=(8, 0))
+            self.status_label.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(12, 0))
+
+        self._layout_add_controls(compact)
+        self._layout_action_controls(compact)
+        self._layout_library_actions(compact)
 
     def set_status(self, status: str) -> None:
         self.status_var.set(status)
