@@ -381,6 +381,7 @@ class InitiativeState:
     started: bool = False
     obs_topmost: bool = True
     obs_background: bool = True
+    obs_fixed_width: bool = False
 
     def __post_init__(self) -> None:
         self.combatants = [
@@ -404,6 +405,7 @@ class InitiativeState:
             "started": self.started,
             "obs_topmost": self.obs_topmost,
             "obs_background": self.obs_background,
+            "obs_fixed_width": self.obs_fixed_width,
         }
 
     @classmethod
@@ -421,6 +423,7 @@ class InitiativeState:
             started=bool(data.get("started", False)),
             obs_topmost=bool(data.get("obs_topmost", True)),
             obs_background=bool(data.get("obs_background", True)),
+            obs_fixed_width=bool(data.get("obs_fixed_width", False)),
         )
 
 

@@ -57,17 +57,12 @@ class InitiativeObsWindow:
 
         self.refresh()
 
-    def _required_width(self, combatants: list[InitiativeCombatant], current_initiative: int | None) -> int:
-        if not combatants:
-            return 520
+    def _fixed_width(self) -> int:
         side_padding = 36
         card_gap = 10
-        card_widths = []
-        for combatant in combatants:
-            is_same_turn = current_initiative is not None and combatant.initiative == current_initiative
-            portrait_size = 132 if is_same_turn else 112
-            card_widths.append(portrait_size + 28)
-        return max(520, side_padding + sum(card_widths) + card_gap * max(0, len(card_widths) - 1))
+        slot_width = 132 + 28
+        slot_count = 12
+        return side_padding + slot_width * slot_count + card_gap * (slot_count - 1)
 
     def _required_height(self, combatants: list[InitiativeCombatant], current_initiative: int | None) -> int:
         if not combatants:
@@ -87,16 +82,16 @@ class InitiativeObsWindow:
         self.window.title(self.tracker.t("initiative.obs_title"))
         current = self.tracker.current_combatant()
         current_initiative = current.initiative if current is not None and state.started else None
-        required_width = self._required_width(state.combatants, current_initiative)
         required_height = self._required_height(state.combatants, current_initiative)
-        self.window.minsize(required_width, required_height)
+        min_width = self._fixed_width() if state.obs_fixed_width else 520
+        self.window.minsize(min_width, required_height)
         current_width = self.window.winfo_width()
         current_height = self.window.winfo_height()
         if current_width <= 1:
             current_width = self.window.winfo_reqwidth()
         if current_height <= 1:
             current_height = self.window.winfo_reqheight()
-        target_width = max(required_width, current_width)
+        target_width = self._fixed_width() if state.obs_fixed_width else current_width
         target_height = max(required_height, current_height)
         if target_width != current_width or target_height != current_height:
             self.window.geometry(f"{target_width}x{target_height}+{self.window.winfo_x()}+{self.window.winfo_y()}")
@@ -291,6 +286,7 @@ class InitiativeTrackerWindow:
         self.source_player_var = tk.StringVar(value=player_names[0])
         self.obs_topmost_var = tk.BooleanVar(value=self.app.state.initiative.obs_topmost)
         self.obs_background_var = tk.BooleanVar(value=self.app.state.initiative.obs_background)
+        self.obs_fixed_width_var = tk.BooleanVar(value=self.app.state.initiative.obs_fixed_width)
 
         self.row_widgets: dict[str, InitiativeCombatantRow] = {}
         self.obs_window: InitiativeObsWindow | None = None
@@ -377,6 +373,8 @@ class InitiativeTrackerWindow:
         self.obs_topmost_check.grid(row=1, column=0, columnspan=6, sticky="w", pady=(10, 0))
         self.obs_background_check = ttk.Checkbutton(top_right, variable=self.obs_background_var, command=self.toggle_obs_background)
         self.obs_background_check.grid(row=2, column=0, columnspan=6, sticky="w", pady=(8, 0))
+        self.obs_fixed_width_check = ttk.Checkbutton(top_right, variable=self.obs_fixed_width_var, command=self.toggle_obs_fixed_width)
+        self.obs_fixed_width_check.grid(row=3, column=0, columnspan=6, sticky="w", pady=(8, 0))
 
         self.encounter_card = ttk.LabelFrame(container, style="Section.TLabelframe", padding=10)
         self.encounter_card.grid(row=2, column=0, sticky="nsew", padx=(0, 8))
@@ -491,8 +489,10 @@ class InitiativeTrackerWindow:
         )
         self.obs_topmost_check.config(text=self.t("initiative.obs_topmost"))
         self.obs_background_check.config(text=self.t("initiative.obs_background"))
+        self.obs_fixed_width_check.config(text=self.t("initiative.obs_fixed_width"))
         self.obs_topmost_var.set(self.app.state.initiative.obs_topmost)
         self.obs_background_var.set(self.app.state.initiative.obs_background)
+        self.obs_fixed_width_var.set(self.app.state.initiative.obs_fixed_width)
         self.encounter_card.config(text=self.t("initiative.card.encounter"))
         self.encounter_header.config(text=self.encounter_summary_text())
         self.library_card.config(text=self.t("initiative.card.library"))
@@ -871,6 +871,12 @@ class InitiativeTrackerWindow:
 
     def toggle_obs_background(self) -> None:
         self.app.state.initiative.obs_background = self.obs_background_var.get()
+        if self.obs_window is not None:
+            self.obs_window.refresh()
+        self.persist(self.t("initiative.status.obs_settings_saved"))
+
+    def toggle_obs_fixed_width(self) -> None:
+        self.app.state.initiative.obs_fixed_width = self.obs_fixed_width_var.get()
         if self.obs_window is not None:
             self.obs_window.refresh()
         self.persist(self.t("initiative.status.obs_settings_saved"))
