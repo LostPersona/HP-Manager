@@ -551,9 +551,7 @@ class SpellSlotsWindow:
         self.title_label.config(text=self.app.t("spell.window_title", name=player.name), bg=base_bg)
         render_mode = self.app.state.overlay.spell_render_mode
         pip_scale = self.app.state.overlay.spell_pip_scale / 100
-        base_pip_size = max(10, int(round(18 * pip_scale)))
-        max_grid_side = max(self._pip_grid_side(player.spell_slots[level].maximum) for level in self.visible_levels) if self.visible_levels else 1
-        target_span = (base_pip_size + 8) * max_grid_side
+        pip_size = max(10, int(round(18 * pip_scale)))
         for level in self.visible_levels:
             slot = player.spell_slots[level]
             self.slot_titles[level].config(
@@ -583,7 +581,6 @@ class SpellSlotsWindow:
                 max_slots = max(0, slot.maximum)
                 current_slots = max(0, min(max_slots, slot.current))
                 grid_side = self._pip_grid_side(max_slots)
-                pip_size = max(10, int((target_span - 8 * grid_side) / max(1, grid_side)))
                 self._ensure_slot_pips(level, max_slots)
                 for idx, pip in enumerate(self.slot_pips[level]):
                     pip.delete("all")
