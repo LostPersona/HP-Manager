@@ -253,6 +253,7 @@ class InitiativeCombatantRow:
     def __init__(self, tracker: "InitiativeTrackerWindow", parent: ttk.Frame, combatant: InitiativeCombatant) -> None:
         self.tracker = tracker
         self.combatant_id = combatant.combatant_id
+        self._portrait_ref = ""
         self.frame = ttk.Frame(parent, style="Card.TFrame", padding=10)
         self.frame.columnconfigure(1, weight=1)
 
@@ -297,10 +298,13 @@ class InitiativeCombatantRow:
         self.refresh(combatant)
 
     def _render_portrait(self, combatant: InitiativeCombatant) -> None:
+        if combatant.portrait_ref == self._portrait_ref:
+            return
         for child in self.portrait_container.winfo_children():
             child.destroy()
         widget = self.tracker.create_portrait_widget(self.portrait_container, combatant.portrait_ref, size=72, background="#171a1f")
         widget.pack()
+        self._portrait_ref = combatant.portrait_ref
 
     def apply_edits(self) -> None:
         combatant = self.tracker.combatant_by_id(self.combatant_id)
@@ -339,8 +343,11 @@ class InitiativeCombatantRow:
 
     def refresh(self, combatant: InitiativeCombatant) -> None:
         self._render_portrait(combatant)
-        self.name_var.set(combatant.name)
-        self.initiative_var.set(str(combatant.initiative))
+        if self.name_var.get() != combatant.name:
+            self.name_var.set(combatant.name)
+        initiative_text = str(combatant.initiative)
+        if self.initiative_var.get() != initiative_text:
+            self.initiative_var.set(initiative_text)
         state = self.tracker.app.state.initiative
         index = self.tracker.combatant_index(self.combatant_id)
         is_current = state.started and index == state.current_turn_index
@@ -385,6 +392,8 @@ class InitiativeTrackerWindow:
         self.combatant_library_refs_by_index: list[str] = []
         self.portrait_library: list[tuple[str, str]] = []
         self.library_refs_by_index: list[str] = []
+        self._combatant_library_signature: tuple[object, ...] | None = None
+        self._preview_signature: tuple[object, ...] | None = None
         self._layout_mode = ""
 
         self._build_layout()
@@ -919,23 +928,35 @@ class InitiativeTrackerWindow:
 
     def refresh_combatant_library(self) -> None:
         selected_entry_id = self.selected_library_entry_id()
-        self.roster_list.delete(0, "end")
-        self.combatant_library_refs_by_index = []
-        selected_index = None
         entries = sorted(
             self.app.state.initiative.library,
             key=lambda entry: (entry.name.lower(), -entry.initiative, entry.entry_id),
         )
+        labels: list[str] = []
+        refs: list[str] = []
         for entry in entries:
             label = entry.name
             if entry.initiative != 0:
                 badge = self.t("initiative.initiative_badge", initiative=entry.initiative)
                 label = f"{entry.name} ({badge})"
-            self.roster_list.insert("end", label)
-            self.combatant_library_refs_by_index.append(entry.entry_id)
-            if entry.entry_id == selected_entry_id:
-                selected_index = len(self.combatant_library_refs_by_index) - 1
+            labels.append(label)
+            refs.append(entry.entry_id)
 
+        signature = (self.app.state.locale, tuple((ref, label) for ref, label in zip(refs, labels)))
+        if signature != self._combatant_library_signature:
+            self.roster_list.delete(0, "end")
+            for label in labels:
+                self.roster_list.insert("end", label)
+            self.combatant_library_refs_by_index = refs
+            self._combatant_library_signature = signature
+
+        selected_index = None
+        for index, entry_id in enumerate(self.combatant_library_refs_by_index):
+            if entry_id == selected_entry_id:
+                selected_index = index
+                break
+
+        self.roster_list.selection_clear(0, "end")
         if selected_index is not None:
             self.roster_list.selection_set(selected_index)
             self.roster_list.see(selected_index)
@@ -1059,6 +1080,7 @@ class InitiativeTrackerWindow:
             self.library_list.see(selected_index)
         elif self.library_refs_by_index:
             self.library_list.selection_set(0)
+        self._preview_signature = None
         self.refresh_library_preview()
 
     def resolve_portrait_path(self, portrait_ref: str) -> Path | None:
@@ -1115,9 +1137,13 @@ class InitiativeTrackerWindow:
         return canvas
 
     def refresh_library_preview(self) -> None:
+        selected = self.selected_portrait_ref()
+        signature = (selected, self.app.state.locale)
+        if signature == self._preview_signature:
+            return
+        self._preview_signature = signature
         for child in self.preview_container.winfo_children():
             child.destroy()
-        selected = self.selected_portrait_ref()
         if not selected:
             label = ttk.Label(self.preview_container, text=self.t("initiative.no_portrait_selected"))
             label.pack(anchor="w")
