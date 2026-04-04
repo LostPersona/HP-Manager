@@ -58,12 +58,17 @@ class InitiativeObsWindow:
 
         self.cards_frame = tk.Frame(self.window, bg="#0e1014")
         self.cards_frame.pack(fill="both", expand=True, padx=18, pady=(0, 18))
+        self.cards_frame.grid_rowconfigure(0, weight=1)
+        self.cards_frame.grid_columnconfigure(0, weight=1)
+
+        self.cards_strip = tk.Frame(self.cards_frame, bg="#0e1014")
+        self.cards_strip.grid(row=0, column=0)
 
         self.refresh()
 
     def _ensure_card_widgets(self, count: int) -> None:
         while len(self.card_widgets) < count:
-            card = tk.Frame(self.cards_frame, highlightthickness=2)
+            card = tk.Frame(self.cards_strip, highlightthickness=2)
             portrait_host = tk.Frame(card, bd=0, highlightthickness=0)
             portrait_host.pack(padx=12, pady=(12, 12))
             name_label = tk.Label(card, width=14, anchor="center")
@@ -78,7 +83,7 @@ class InitiativeObsWindow:
 
     def _hide_empty_state(self) -> None:
         if self.empty_label is not None:
-            self.empty_label.pack_forget()
+            self.empty_label.grid_remove()
 
     def _show_empty_state(self) -> None:
         if self.empty_label is None:
@@ -93,7 +98,8 @@ class InitiativeObsWindow:
             bg="#12161d",
             text=self.tracker.t("initiative.empty_obs"),
         )
-        self.empty_label.pack(fill="both", expand=True)
+        self.cards_strip.grid_remove()
+        self.empty_label.grid(row=0, column=0, sticky="nsew")
 
     def _render_card(
         self,
@@ -210,6 +216,7 @@ class InitiativeObsWindow:
             return
 
         self._hide_empty_state()
+        self.cards_strip.grid()
         self._ensure_card_widgets(len(visible_combatants))
 
         for slot_index, (actual_index, combatant) in enumerate(visible_combatants):
