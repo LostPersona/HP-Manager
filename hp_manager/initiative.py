@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 
 PORTRAIT_EXTENSIONS = {".png", ".gif", ".ppm", ".pgm"}
-TRANSPARENT_KEY = "#00ff00"
+TRANSPARENT_KEY = "#010203"
 OBS_SLOT_OPTIONS = tuple(str(value) for value in range(4, 13))
 INITIATIVE_COMPACT_BREAKPOINT = 1220
 
@@ -130,7 +130,7 @@ class InitiativeObsWindow:
             card_bg = base_bg
             outline = base_bg
             highlight = 0
-            card_gap = 2
+            card_gap = 3
             portrait_padx = 0
             portrait_pady = (0, 4)
             name_padx = 2

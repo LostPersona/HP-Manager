@@ -20,7 +20,7 @@ from hp_manager.sync import ParseIssue, ParsedSyncData, SyncFetchError, fetch_go
 WINDOW_MIN_WIDTH = 1060
 WINDOW_MIN_HEIGHT = 560
 OVERLAY_SIZE = 220
-TRANSPARENT_KEY = "#00ff00"
+TRANSPARENT_KEY = "#010203"
 ICON_PATH = asset_path("app.ico")
 OVERLAY_TITLE_HEIGHT = 30
 WINDOWS_APP_ID = "LostPersona.HPManager"
