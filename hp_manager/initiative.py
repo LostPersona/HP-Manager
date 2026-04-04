@@ -85,7 +85,7 @@ class InitiativeObsWindow:
         if self.empty_label is not None:
             self.empty_label.grid_remove()
 
-    def _show_empty_state(self) -> None:
+    def _show_empty_state(self, background: str) -> None:
         if self.empty_label is None:
             self.empty_label = tk.Label(
                 self.cards_frame,
@@ -95,7 +95,7 @@ class InitiativeObsWindow:
                 pady=24,
             )
         self.empty_label.config(
-            bg="#12161d",
+            bg=background,
             text=self.tracker.t("initiative.empty_obs"),
         )
         self.cards_strip.grid_remove()
@@ -107,16 +107,24 @@ class InitiativeObsWindow:
         combatant: InitiativeCombatant,
         is_current: bool,
         is_same_turn: bool,
+        background_visible: bool,
+        base_bg: str,
     ) -> None:
         card = slot["card"]
         portrait_host = slot["portrait_host"]
         name_label = slot["name_label"]
-        card_bg = "#25241e" if is_current else "#22211b" if is_same_turn else "#171c24"
-        outline = "#e4c16a" if is_current else "#c79761" if is_same_turn else "#2b3440"
+        if background_visible:
+            card_bg = "#25241e" if is_current else "#22211b" if is_same_turn else "#171c24"
+            outline = "#e4c16a" if is_current else "#c79761" if is_same_turn else "#2b3440"
+            highlight = 2
+        else:
+            card_bg = base_bg
+            outline = base_bg
+            highlight = 0
         portrait_size = 132 if is_same_turn else 112
         top_padding = 0 if is_same_turn else 20
 
-        card.configure(bg=card_bg, highlightbackground=outline)
+        card.configure(bg=card_bg, highlightbackground=outline, highlightthickness=highlight)
         portrait_host.configure(bg=card_bg)
         name_label.config(
             bg=card_bg,
@@ -199,6 +207,7 @@ class InitiativeObsWindow:
         self.window.configure(bg=base_bg)
         self.header.configure(bg=base_bg)
         self.cards_frame.configure(bg=base_bg)
+        self.cards_strip.configure(bg=base_bg)
         self.round_label.config(text=self.tracker.t("initiative.round_label", round_number=state.round_number))
         if current is not None and state.started:
             self.current_label.config(text=self.tracker.t("initiative.current_turn", name=current.name))
@@ -212,7 +221,7 @@ class InitiativeObsWindow:
         if not visible_combatants:
             for slot in self.card_widgets:
                 slot["card"].pack_forget()
-            self._show_empty_state()
+            self._show_empty_state(base_bg)
             return
 
         self._hide_empty_state()
@@ -222,7 +231,14 @@ class InitiativeObsWindow:
         for slot_index, (actual_index, combatant) in enumerate(visible_combatants):
             is_current = state.started and actual_index == state.current_turn_index
             is_same_turn = current_initiative is not None and combatant.initiative == current_initiative
-            self._render_card(self.card_widgets[slot_index], combatant, is_current=is_current, is_same_turn=is_same_turn)
+            self._render_card(
+                self.card_widgets[slot_index],
+                combatant,
+                is_current=is_current,
+                is_same_turn=is_same_turn,
+                background_visible=background_visible,
+                base_bg=base_bg,
+            )
 
         for slot in self.card_widgets[len(visible_combatants) :]:
             slot["card"].pack_forget()
@@ -809,6 +825,7 @@ class InitiativeTrackerWindow:
         self.obs_topmost_var.set(self.app.state.initiative.obs_topmost)
         self.obs_background_var.set(self.app.state.initiative.obs_background)
         self.obs_visible_slots_var.set(str(self.app.state.initiative.obs_visible_slots))
+        self._apply_responsive_layout(max(self.window.winfo_width(), self.window.winfo_reqwidth()))
         self.encounter_card.config(text=self.t("initiative.card.encounter"))
         self.encounter_header.config(text=self.encounter_summary_text())
         self.roster_card.config(text=self.t("initiative.card.combatant_library"))
@@ -910,8 +927,10 @@ class InitiativeTrackerWindow:
             key=lambda entry: (entry.name.lower(), -entry.initiative, entry.entry_id),
         )
         for entry in entries:
-            badge = self.t("initiative.initiative_badge", initiative=entry.initiative)
-            label = f"{entry.name} ({badge})"
+            label = entry.name
+            if entry.initiative != 0:
+                badge = self.t("initiative.initiative_badge", initiative=entry.initiative)
+                label = f"{entry.name} ({badge})"
             self.roster_list.insert("end", label)
             self.combatant_library_refs_by_index.append(entry.entry_id)
             if entry.entry_id == selected_entry_id:
@@ -949,9 +968,8 @@ class InitiativeTrackerWindow:
 
     def save_current_to_library(self) -> None:
         name = self.app.localized_player_name(self.add_name_var.get())
-        initiative = _safe_int(self.add_initiative_var.get(), 0)
         portrait_ref = self.selected_portrait_ref()
-        entry = InitiativeLibraryEntry(name=name, initiative=initiative, portrait_ref=portrait_ref)
+        entry = InitiativeLibraryEntry(name=name, initiative=0, portrait_ref=portrait_ref)
         self.app.state.initiative.library.append(entry)
         self.persist(self.t("initiative.status.saved_to_library", name=entry.name))
 
@@ -960,11 +978,10 @@ class InitiativeTrackerWindow:
         if not source_name:
             self.set_status(self.t("initiative.status.no_player_selected"))
             return
-        initiative = _safe_int(self.add_initiative_var.get(), 0)
         portrait_ref = self.selected_portrait_ref()
         entry = InitiativeLibraryEntry(
             name=self.app.localized_player_name(source_name),
-            initiative=initiative,
+            initiative=0,
             portrait_ref=portrait_ref,
         )
         self.app.state.initiative.library.append(entry)
@@ -979,7 +996,7 @@ class InitiativeTrackerWindow:
         if entry is None:
             self.set_status(self.t("initiative.status.no_library_selected"))
             return
-        combatant = self._build_combatant(entry.name, entry.initiative, entry.portrait_ref)
+        combatant = self._build_combatant(entry.name, 0, entry.portrait_ref)
         self._add_combatant_to_encounter(combatant)
         status_key = "initiative.status.inserted" if self.app.state.initiative.started else "initiative.status.added"
         self.persist(self.t(status_key, name=combatant.name))
@@ -1085,7 +1102,8 @@ class InitiativeTrackerWindow:
             label.image = image
             return label
         canvas = tk.Canvas(parent, width=size, height=size, bg=background, highlightthickness=0, bd=0)
-        canvas.create_rectangle(2, 2, size - 2, size - 2, fill="#1e2530", outline="#394455", width=2)
+        if background != TRANSPARENT_KEY:
+            canvas.create_rectangle(2, 2, size - 2, size - 2, fill="#1e2530", outline="#394455", width=2)
         canvas.create_text(
             size // 2,
             size // 2,
