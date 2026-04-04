@@ -79,6 +79,8 @@ class InitiativeObsWindow:
                     "card": card,
                     "portrait_host": portrait_host,
                     "name_label": name_label,
+                    "portrait_widget": None,
+                    "portrait_signature": None,
                 }
             )
 
@@ -114,16 +116,26 @@ class InitiativeObsWindow:
         card = slot["card"]
         portrait_host = slot["portrait_host"]
         name_label = slot["name_label"]
+        portrait_widget = slot["portrait_widget"]
         if background_visible:
             card_bg = "#25241e" if is_current else "#22211b" if is_same_turn else "#171c24"
             outline = "#e4c16a" if is_current else "#c79761" if is_same_turn else "#2b3440"
             highlight = 2
+            card_gap = 10
+            portrait_padx = 12
+            portrait_pady = (12, 10 if is_same_turn else 12)
+            name_padx = 10
+            top_padding = 0 if is_same_turn else 20
         else:
             card_bg = base_bg
             outline = base_bg
             highlight = 0
+            card_gap = 2
+            portrait_padx = 0
+            portrait_pady = (0, 4)
+            name_padx = 2
+            top_padding = 0
         portrait_size = 132 if is_same_turn else 112
-        top_padding = 0 if is_same_turn else 20
 
         card.configure(bg=card_bg, highlightbackground=outline, highlightthickness=highlight)
         portrait_host.configure(bg=card_bg)
@@ -137,19 +149,25 @@ class InitiativeObsWindow:
         )
 
         if card.winfo_manager():
-            card.pack_configure(side="left", fill="y", padx=(0, 10), pady=(top_padding, 0))
+            card.pack_configure(side="left", fill="y", padx=(0, card_gap), pady=(top_padding, 0))
         else:
-            card.pack(side="left", fill="y", padx=(0, 10), pady=(top_padding, 0))
+            card.pack(side="left", fill="y", padx=(0, card_gap), pady=(top_padding, 0))
+        portrait_host.pack_configure(padx=portrait_padx, pady=portrait_pady)
+        name_label.pack_configure(padx=name_padx, pady=(0, 14 if is_same_turn else 18))
 
-        for child in portrait_host.winfo_children():
-            child.destroy()
-        portrait = self.tracker.create_portrait_widget(
-            portrait_host,
-            combatant.portrait_ref,
-            size=portrait_size,
-            background=card_bg,
-        )
-        portrait.pack()
+        portrait_signature = (combatant.portrait_ref, portrait_size, card_bg)
+        if portrait_signature != slot["portrait_signature"] or portrait_widget is None:
+            portrait = self.tracker.refresh_portrait_widget(
+                portrait_widget,
+                portrait_host,
+                combatant.portrait_ref,
+                size=portrait_size,
+                background=card_bg,
+            )
+            if portrait is not portrait_widget or not portrait.winfo_manager():
+                portrait.pack()
+            slot["portrait_widget"] = portrait
+            slot["portrait_signature"] = portrait_signature
 
     def _fixed_width(self, slot_count: int) -> int:
         side_padding = 36
@@ -302,10 +320,11 @@ class InitiativeCombatantRow:
     def _render_portrait(self, combatant: InitiativeCombatant) -> None:
         if combatant.portrait_ref == self._portrait_ref:
             return
-        for child in self.portrait_container.winfo_children():
-            child.destroy()
-        widget = self.tracker.create_portrait_widget(self.portrait_container, combatant.portrait_ref, size=72, background="#171a1f")
-        widget.pack()
+        existing = self.portrait_container.winfo_children()
+        widget = existing[0] if existing else None
+        widget = self.tracker.refresh_portrait_widget(widget, self.portrait_container, combatant.portrait_ref, size=72, background="#171a1f")
+        if not widget.winfo_manager():
+            widget.pack()
         self._portrait_ref = combatant.portrait_ref
 
     def apply_edits(self) -> None:
@@ -1120,13 +1139,9 @@ class InitiativeTrackerWindow:
         self.portrait_cache[cache_key] = image
         return image
 
-    def create_portrait_widget(self, parent: tk.Misc, portrait_ref: str, size: int, background: str) -> tk.Widget:
-        image = self.get_portrait_image(portrait_ref, size)
-        if image is not None:
-            label = tk.Label(parent, image=image, bg=background, bd=0, highlightthickness=0)
-            label.image = image
-            return label
-        canvas = tk.Canvas(parent, width=size, height=size, bg=background, highlightthickness=0, bd=0)
+    def _draw_missing_portrait(self, canvas: tk.Canvas, size: int, background: str) -> None:
+        canvas.delete("all")
+        canvas.config(width=size, height=size, bg=background, highlightthickness=0, bd=0)
         if background != TRANSPARENT_KEY:
             canvas.create_rectangle(2, 2, size - 2, size - 2, fill="#1e2530", outline="#394455", width=2)
         canvas.create_text(
@@ -1137,6 +1152,44 @@ class InitiativeTrackerWindow:
             fill="#d0dae8",
             font=("Segoe UI Semibold", max(10, size // 8)),
         )
+
+    def create_portrait_widget(self, parent: tk.Misc, portrait_ref: str, size: int, background: str) -> tk.Widget:
+        image = self.get_portrait_image(portrait_ref, size)
+        if image is not None:
+            label = tk.Label(parent, image=image, bg=background, bd=0, highlightthickness=0)
+            label.image = image
+            return label
+        canvas = tk.Canvas(parent, width=size, height=size, bg=background, highlightthickness=0, bd=0)
+        self._draw_missing_portrait(canvas, size, background)
+        return canvas
+
+    def refresh_portrait_widget(
+        self,
+        widget: tk.Widget | None,
+        parent: tk.Misc,
+        portrait_ref: str,
+        size: int,
+        background: str,
+    ) -> tk.Widget:
+        image = self.get_portrait_image(portrait_ref, size)
+        if image is not None:
+            if isinstance(widget, tk.Label):
+                widget.config(image=image, bg=background, text="")
+                widget.image = image
+                return widget
+            if widget is not None and widget.winfo_exists():
+                widget.destroy()
+            label = tk.Label(parent, image=image, bg=background, bd=0, highlightthickness=0)
+            label.image = image
+            return label
+
+        if isinstance(widget, tk.Canvas):
+            self._draw_missing_portrait(widget, size, background)
+            return widget
+        if widget is not None and widget.winfo_exists():
+            widget.destroy()
+        canvas = tk.Canvas(parent, width=size, height=size, bg=background, highlightthickness=0, bd=0)
+        self._draw_missing_portrait(canvas, size, background)
         return canvas
 
     def refresh_library_preview(self) -> None:
