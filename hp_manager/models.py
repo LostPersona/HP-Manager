@@ -374,8 +374,39 @@ class InitiativeCombatant:
 
 
 @dataclass(slots=True)
+class InitiativeLibraryEntry:
+    name: str
+    initiative: int = 0
+    portrait_ref: str = ""
+    entry_id: str = field(default_factory=lambda: uuid4().hex)
+
+    def __post_init__(self) -> None:
+        self.name = (self.name or "Unnamed").strip() or "Unnamed"
+        self.initiative = _clean_int(self.initiative, 0)
+        self.portrait_ref = str(self.portrait_ref or "").strip()
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "entry_id": self.entry_id,
+            "name": self.name,
+            "initiative": self.initiative,
+            "portrait_ref": self.portrait_ref,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, object]) -> "InitiativeLibraryEntry":
+        return cls(
+            entry_id=str(data.get("entry_id") or uuid4().hex),
+            name=str(data.get("name") or "Unnamed"),
+            initiative=_clean_int(data.get("initiative"), 0),
+            portrait_ref=str(data.get("portrait_ref") or ""),
+        )
+
+
+@dataclass(slots=True)
 class InitiativeState:
     combatants: list[InitiativeCombatant] = field(default_factory=list)
+    library: list[InitiativeLibraryEntry] = field(default_factory=list)
     current_turn_index: int = 0
     round_number: int = 1
     started: bool = False
@@ -389,6 +420,11 @@ class InitiativeState:
             for item in self.combatants
             if isinstance(item, (InitiativeCombatant, dict))
         ]
+        self.library = [
+            item if isinstance(item, InitiativeLibraryEntry) else InitiativeLibraryEntry.from_dict(item)
+            for item in self.library
+            if isinstance(item, (InitiativeLibraryEntry, dict))
+        ]
         self.round_number = max(1, _clean_int(self.round_number, 1))
         self.current_turn_index = max(0, _clean_int(self.current_turn_index, 0))
         self.obs_visible_slots = max(4, min(12, _clean_int(self.obs_visible_slots, 12)))
@@ -401,6 +437,7 @@ class InitiativeState:
     def to_dict(self) -> dict[str, object]:
         return {
             "combatants": [combatant.to_dict() for combatant in self.combatants],
+            "library": [entry.to_dict() for entry in self.library],
             "current_turn_index": self.current_turn_index,
             "round_number": self.round_number,
             "started": self.started,
@@ -414,11 +451,16 @@ class InitiativeState:
         if not data:
             return cls()
         raw_combatants = data.get("combatants", [])
+        raw_library = data.get("library", [])
         combatants = []
+        library = []
         if isinstance(raw_combatants, list):
             combatants = [InitiativeCombatant.from_dict(item) for item in raw_combatants if isinstance(item, dict)]
+        if isinstance(raw_library, list):
+            library = [InitiativeLibraryEntry.from_dict(item) for item in raw_library if isinstance(item, dict)]
         return cls(
             combatants=combatants,
+            library=library,
             current_turn_index=_clean_int(data.get("current_turn_index"), 0),
             round_number=max(1, _clean_int(data.get("round_number"), 1)),
             started=bool(data.get("started", False)),

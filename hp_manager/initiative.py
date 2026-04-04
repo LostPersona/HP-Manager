@@ -7,7 +7,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import TYPE_CHECKING
 
-from hp_manager.models import InitiativeCombatant
+from hp_manager.models import InitiativeCombatant, InitiativeLibraryEntry
 from hp_manager.paths import bundled_portraits_dir, user_portraits_dir
 
 if TYPE_CHECKING:
@@ -365,6 +365,7 @@ class InitiativeTrackerWindow:
         self.row_widgets: dict[str, InitiativeCombatantRow] = {}
         self.obs_window: InitiativeObsWindow | None = None
         self.portrait_cache: dict[tuple[str, int], tk.PhotoImage] = {}
+        self.combatant_library_refs_by_index: list[str] = []
         self.portrait_library: list[tuple[str, str]] = []
         self.library_refs_by_index: list[str] = []
         self._layout_mode = ""
@@ -409,6 +410,7 @@ class InitiativeTrackerWindow:
         self.add_initiative_label = ttk.Label(top_left)
         self.add_initiative_entry = ttk.Entry(top_left, textvariable=self.add_initiative_var, width=8)
         self.add_button = ttk.Button(top_left, command=self.add_combatant)
+        self.save_to_library_button = ttk.Button(top_left, command=self.save_current_to_library)
 
         player_row = ttk.Frame(top_left)
         self.player_row = player_row
@@ -464,7 +466,47 @@ class InitiativeTrackerWindow:
         self.rows_frame.bind("<Configure>", self._on_rows_configure)
         self.canvas.bind("<Configure>", self._on_canvas_configure)
 
-        self.library_card = ttk.LabelFrame(container, style="Section.TLabelframe", padding=10)
+        self.side_panel = ttk.Frame(container)
+        self.side_panel.columnconfigure(0, weight=1)
+        self.side_panel.rowconfigure(0, weight=1)
+        self.side_panel.rowconfigure(1, weight=2)
+
+        self.roster_card = ttk.LabelFrame(self.side_panel, style="Section.TLabelframe", padding=10)
+        self.roster_card.columnconfigure(0, weight=1)
+        self.roster_card.rowconfigure(1, weight=1)
+
+        self.roster_header = ttk.Label(self.roster_card, style="Muted.TLabel")
+        self.roster_header.grid(row=0, column=0, sticky="w", pady=(0, 10))
+
+        roster_list_frame = ttk.Frame(self.roster_card)
+        roster_list_frame.grid(row=1, column=0, sticky="nsew")
+        roster_list_frame.columnconfigure(0, weight=1)
+        roster_list_frame.rowconfigure(0, weight=1)
+
+        self.roster_list = tk.Listbox(
+            roster_list_frame,
+            bg="#141922",
+            fg="#e7ebef",
+            selectbackground="#243142",
+            activestyle="none",
+            highlightthickness=0,
+        )
+        self.roster_list.grid(row=0, column=0, sticky="nsew")
+        roster_scroll = ttk.Scrollbar(roster_list_frame, orient="vertical", command=self.roster_list.yview)
+        roster_scroll.grid(row=0, column=1, sticky="ns")
+        self.roster_list.configure(yscrollcommand=roster_scroll.set)
+        self.roster_list.bind("<Double-Button-1>", lambda _event: self.add_selected_library_combatant())
+
+        roster_actions = ttk.Frame(self.roster_card)
+        self.roster_actions = roster_actions
+        self.add_selected_library_button = ttk.Button(roster_actions, command=self.add_selected_library_combatant)
+        self.delete_library_entry_button = ttk.Button(roster_actions, command=self.delete_selected_library_entry)
+        self.roster_action_buttons = [
+            self.add_selected_library_button,
+            self.delete_library_entry_button,
+        ]
+
+        self.library_card = ttk.LabelFrame(self.side_panel, style="Section.TLabelframe", padding=10)
         self.library_card.columnconfigure(0, weight=1)
         self.library_card.rowconfigure(4, weight=1)
 
@@ -533,12 +575,13 @@ class InitiativeTrackerWindow:
         self.add_initiative_label.grid_forget()
         self.add_initiative_entry.grid_forget()
         self.add_button.grid_forget()
+        self.save_to_library_button.grid_forget()
         self.player_row.grid_forget()
         self.from_players_label.grid_forget()
         self.source_player_combo.grid_forget()
         self.add_from_player_button.grid_forget()
 
-        for column in range(5):
+        for column in range(6):
             self.top_left.columnconfigure(column, weight=0)
         for column in range(3):
             self.player_row.columnconfigure(column, weight=0)
@@ -547,13 +590,16 @@ class InitiativeTrackerWindow:
             self.top_left.columnconfigure(1, weight=1)
             self.top_left.columnconfigure(2, weight=1)
             self.top_left.columnconfigure(3, weight=1)
+            self.top_left.columnconfigure(4, weight=1)
+            self.top_left.columnconfigure(5, weight=1)
             self.add_name_label.grid(row=0, column=0, sticky="w")
-            self.add_name_entry.grid(row=0, column=1, columnspan=4, sticky="ew", padx=(8, 0))
+            self.add_name_entry.grid(row=0, column=1, columnspan=5, sticky="ew", padx=(8, 0))
             self.add_initiative_label.grid(row=1, column=0, sticky="w", pady=(10, 0))
             self.add_initiative_entry.grid(row=1, column=1, sticky="ew", padx=(8, 8), pady=(10, 0))
-            self.add_button.grid(row=1, column=2, columnspan=3, sticky="ew", pady=(10, 0))
+            self.add_button.grid(row=1, column=2, columnspan=2, sticky="ew", pady=(10, 0))
+            self.save_to_library_button.grid(row=1, column=4, columnspan=2, sticky="ew", padx=(8, 0), pady=(10, 0))
 
-            self.player_row.grid(row=2, column=0, columnspan=5, sticky="ew", pady=(12, 0))
+            self.player_row.grid(row=2, column=0, columnspan=6, sticky="ew", pady=(12, 0))
             self.player_row.columnconfigure(0, weight=0)
             self.player_row.columnconfigure(1, weight=1)
             self.player_row.columnconfigure(2, weight=0)
@@ -563,13 +609,15 @@ class InitiativeTrackerWindow:
         else:
             self.top_left.columnconfigure(1, weight=1)
             self.top_left.columnconfigure(4, weight=1)
+            self.top_left.columnconfigure(5, weight=1)
             self.add_name_label.grid(row=0, column=0, sticky="w")
             self.add_name_entry.grid(row=0, column=1, sticky="ew", padx=(8, 12))
             self.add_initiative_label.grid(row=0, column=2, sticky="w")
             self.add_initiative_entry.grid(row=0, column=3, sticky="ew", padx=(8, 12))
-            self.add_button.grid(row=0, column=4, sticky="ew")
+            self.add_button.grid(row=0, column=4, sticky="ew", padx=(0, 8))
+            self.save_to_library_button.grid(row=0, column=5, sticky="ew")
 
-            self.player_row.grid(row=1, column=0, columnspan=5, sticky="ew", pady=(10, 0))
+            self.player_row.grid(row=1, column=0, columnspan=6, sticky="ew", pady=(10, 0))
             self.player_row.columnconfigure(1, weight=1)
             self.from_players_label.grid(row=0, column=0, sticky="w")
             self.source_player_combo.grid(row=0, column=1, sticky="ew", padx=(8, 12))
@@ -637,6 +685,24 @@ class InitiativeTrackerWindow:
             self.refresh_button.grid(row=0, column=2, sticky="ew", padx=6)
             self.use_selected_button.grid(row=0, column=3, sticky="ew", padx=(6, 0))
 
+    def _layout_roster_actions(self, compact: bool) -> None:
+        self.roster_actions.grid_forget()
+        for button in self.roster_action_buttons:
+            button.grid_forget()
+        for column in range(2):
+            self.roster_actions.columnconfigure(column, weight=0)
+
+        self.roster_actions.grid(row=2, column=0, sticky="ew", pady=(10, 0))
+        if compact:
+            self.roster_actions.columnconfigure(0, weight=1)
+            self.add_selected_library_button.grid(row=0, column=0, sticky="ew")
+            self.delete_library_entry_button.grid(row=1, column=0, sticky="ew", pady=(8, 0))
+        else:
+            for column in range(2):
+                self.roster_actions.columnconfigure(column, weight=1)
+            self.add_selected_library_button.grid(row=0, column=0, sticky="ew", padx=(0, 6))
+            self.delete_library_entry_button.grid(row=0, column=1, sticky="ew", padx=(6, 0))
+
     def _apply_responsive_layout(self, width: int) -> None:
         compact = width < INITIATIVE_COMPACT_BREAKPOINT
         mode = "compact" if compact else "wide"
@@ -647,7 +713,7 @@ class InitiativeTrackerWindow:
         self.top_left.grid_forget()
         self.top_right.grid_forget()
         self.encounter_card.grid_forget()
-        self.library_card.grid_forget()
+        self.side_panel.grid_forget()
         self.status_label.grid_forget()
 
         if compact:
@@ -661,7 +727,7 @@ class InitiativeTrackerWindow:
             self.top_left.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(16, 10))
             self.top_right.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(0, 12))
             self.encounter_card.grid(row=3, column=0, columnspan=2, sticky="nsew", pady=(0, 12))
-            self.library_card.grid(row=4, column=0, columnspan=2, sticky="nsew")
+            self.side_panel.grid(row=4, column=0, columnspan=2, sticky="nsew")
             self.status_label.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(12, 0))
         else:
             self.container.columnconfigure(0, weight=3)
@@ -674,11 +740,14 @@ class InitiativeTrackerWindow:
             self.top_left.grid(row=1, column=0, sticky="ew", pady=(16, 12), padx=(0, 8))
             self.top_right.grid(row=1, column=1, sticky="ew", pady=(16, 12), padx=(8, 0))
             self.encounter_card.grid(row=2, column=0, sticky="nsew", padx=(0, 8))
-            self.library_card.grid(row=2, column=1, sticky="nsew", padx=(8, 0))
+            self.side_panel.grid(row=2, column=1, sticky="nsew", padx=(8, 0))
             self.status_label.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(12, 0))
 
+        self.roster_card.grid(row=0, column=0, sticky="nsew", pady=(0, 12))
+        self.library_card.grid(row=1, column=0, sticky="nsew")
         self._layout_add_controls(compact)
         self._layout_action_controls(compact)
+        self._layout_roster_actions(compact)
         self._layout_library_actions(compact)
 
     def set_status(self, status: str) -> None:
@@ -704,6 +773,7 @@ class InitiativeTrackerWindow:
         self.add_name_label.config(text=self.t("label.name"))
         self.add_initiative_label.config(text=self.t("initiative.label.initiative"))
         self.add_button.config(text=self.t("initiative.action.add_combatant"))
+        self.save_to_library_button.config(text=self.t("initiative.action.save_to_library"))
         self.from_players_label.config(text=self.t("initiative.label.from_players"))
         self.add_from_player_button.config(text=self.t("initiative.action.add_from_players"))
         self.start_button.config(text=self.t("initiative.action.start"))
@@ -722,6 +792,10 @@ class InitiativeTrackerWindow:
         self.obs_visible_slots_var.set(str(self.app.state.initiative.obs_visible_slots))
         self.encounter_card.config(text=self.t("initiative.card.encounter"))
         self.encounter_header.config(text=self.encounter_summary_text())
+        self.roster_card.config(text=self.t("initiative.card.combatant_library"))
+        self.roster_header.config(text=self.t("initiative.library_header"))
+        self.add_selected_library_button.config(text=self.t("initiative.action.add_selected_library"))
+        self.delete_library_entry_button.config(text=self.t("initiative.action.delete_library_entry"))
         self.library_card.config(text=self.t("initiative.card.library"))
         self.search_label.config(text=self.t("initiative.label.search"))
         self.preview_title.config(text=self.t("initiative.label.preview"))
@@ -748,6 +822,7 @@ class InitiativeTrackerWindow:
         if self.obs_window is not None:
             self.obs_window.refresh()
 
+        self.refresh_combatant_library()
         self.refresh_library_preview()
         self._on_rows_configure()
 
@@ -770,6 +845,12 @@ class InitiativeTrackerWindow:
         index = max(0, min(state.current_turn_index, len(state.combatants) - 1))
         return state.combatants[index]
 
+    def library_entry_by_id(self, entry_id: str) -> InitiativeLibraryEntry | None:
+        for entry in self.app.state.initiative.library:
+            if entry.entry_id == entry_id:
+                return entry
+        return None
+
     def combatant_by_id(self, combatant_id: str) -> InitiativeCombatant | None:
         for combatant in self.app.state.initiative.combatants:
             if combatant.combatant_id == combatant_id:
@@ -790,6 +871,96 @@ class InitiativeTrackerWindow:
         if 0 <= index < len(self.library_refs_by_index):
             return self.library_refs_by_index[index]
         return ""
+
+    def selected_library_entry_id(self) -> str:
+        selection = self.roster_list.curselection()
+        if not selection:
+            return ""
+        index = selection[0]
+        if 0 <= index < len(self.combatant_library_refs_by_index):
+            return self.combatant_library_refs_by_index[index]
+        return ""
+
+    def refresh_combatant_library(self) -> None:
+        selected_entry_id = self.selected_library_entry_id()
+        self.roster_list.delete(0, "end")
+        self.combatant_library_refs_by_index = []
+        selected_index = None
+        entries = sorted(
+            self.app.state.initiative.library,
+            key=lambda entry: (entry.name.lower(), -entry.initiative, entry.entry_id),
+        )
+        for entry in entries:
+            badge = self.t("initiative.initiative_badge", initiative=entry.initiative)
+            label = f"{entry.name} ({badge})"
+            self.roster_list.insert("end", label)
+            self.combatant_library_refs_by_index.append(entry.entry_id)
+            if entry.entry_id == selected_entry_id:
+                selected_index = len(self.combatant_library_refs_by_index) - 1
+
+        if selected_index is not None:
+            self.roster_list.selection_set(selected_index)
+            self.roster_list.see(selected_index)
+        elif self.combatant_library_refs_by_index:
+            self.roster_list.selection_set(0)
+
+    def _build_combatant(self, name: str, initiative: int, portrait_ref: str) -> InitiativeCombatant:
+        return InitiativeCombatant(
+            name=self.app.localized_player_name(name),
+            initiative=initiative,
+            portrait_ref=portrait_ref,
+        )
+
+    def _insertion_index_for_started_encounter(self, initiative: int) -> int:
+        index = 0
+        combatants = self.app.state.initiative.combatants
+        while index < len(combatants) and combatants[index].initiative >= initiative:
+            index += 1
+        return index
+
+    def _add_combatant_to_encounter(self, combatant: InitiativeCombatant) -> None:
+        state = self.app.state.initiative
+        if state.started:
+            current_id = self._remember_current()
+            insert_index = self._insertion_index_for_started_encounter(combatant.initiative)
+            state.combatants.insert(insert_index, combatant)
+            self._restore_current(current_id)
+        else:
+            state.combatants.append(combatant)
+
+    def save_current_to_library(self) -> None:
+        name = self.app.localized_player_name(self.add_name_var.get())
+        initiative = _safe_int(self.add_initiative_var.get(), 0)
+        portrait_ref = self.selected_portrait_ref()
+        entry = InitiativeLibraryEntry(name=name, initiative=initiative, portrait_ref=portrait_ref)
+        self.app.state.initiative.library.append(entry)
+        self.persist(self.t("initiative.status.saved_to_library", name=entry.name))
+
+    def add_selected_library_combatant(self) -> None:
+        entry_id = self.selected_library_entry_id()
+        if not entry_id:
+            self.set_status(self.t("initiative.status.no_library_selected"))
+            return
+        entry = self.library_entry_by_id(entry_id)
+        if entry is None:
+            self.set_status(self.t("initiative.status.no_library_selected"))
+            return
+        combatant = self._build_combatant(entry.name, entry.initiative, entry.portrait_ref)
+        self._add_combatant_to_encounter(combatant)
+        status_key = "initiative.status.inserted" if self.app.state.initiative.started else "initiative.status.added"
+        self.persist(self.t(status_key, name=combatant.name))
+
+    def delete_selected_library_entry(self) -> None:
+        entry_id = self.selected_library_entry_id()
+        if not entry_id:
+            self.set_status(self.t("initiative.status.no_library_selected"))
+            return
+        entry = self.library_entry_by_id(entry_id)
+        if entry is None:
+            self.set_status(self.t("initiative.status.no_library_selected"))
+            return
+        self.app.state.initiative.library = [item for item in self.app.state.initiative.library if item.entry_id != entry_id]
+        self.persist(self.t("initiative.status.deleted_library_entry", name=entry.name))
 
     def refresh_library(self) -> None:
         selected = self.selected_portrait_ref()
@@ -969,11 +1140,12 @@ class InitiativeTrackerWindow:
         name = self.app.localized_player_name(self.add_name_var.get())
         initiative = _safe_int(self.add_initiative_var.get(), 0)
         portrait_ref = self.selected_portrait_ref()
-        combatant = InitiativeCombatant(name=name, initiative=initiative, portrait_ref=portrait_ref)
-        self.app.state.initiative.combatants.append(combatant)
+        combatant = self._build_combatant(name, initiative, portrait_ref)
+        self._add_combatant_to_encounter(combatant)
         self.add_name_var.set("")
         self.add_initiative_var.set("0")
-        self.persist(self.t("initiative.status.added", name=combatant.name))
+        status_key = "initiative.status.inserted" if self.app.state.initiative.started else "initiative.status.added"
+        self.persist(self.t(status_key, name=combatant.name))
 
     def add_from_player(self) -> None:
         source_name = self.source_player_var.get().strip()
@@ -982,9 +1154,10 @@ class InitiativeTrackerWindow:
             return
         initiative = _safe_int(self.add_initiative_var.get(), 0)
         portrait_ref = self.selected_portrait_ref()
-        combatant = InitiativeCombatant(name=source_name, initiative=initiative, portrait_ref=portrait_ref)
-        self.app.state.initiative.combatants.append(combatant)
-        self.persist(self.t("initiative.status.added", name=combatant.name))
+        combatant = self._build_combatant(source_name, initiative, portrait_ref)
+        self._add_combatant_to_encounter(combatant)
+        status_key = "initiative.status.inserted" if self.app.state.initiative.started else "initiative.status.added"
+        self.persist(self.t(status_key, name=combatant.name))
 
     def _remember_current(self) -> str:
         current = self.current_combatant()
