@@ -358,6 +358,7 @@ class InitiativeTrackerWindow:
         self.add_initiative_var = tk.StringVar(value="0")
         player_names = [player.name for player in self.app.state.players] or [""]
         self.source_player_var = tk.StringVar(value=player_names[0])
+        self.show_hp_player_import_var = tk.BooleanVar(value=self.app.state.initiative.show_hp_player_import)
         self.obs_topmost_var = tk.BooleanVar(value=self.app.state.initiative.obs_topmost)
         self.obs_background_var = tk.BooleanVar(value=self.app.state.initiative.obs_background)
         self.obs_visible_slots_var = tk.StringVar(value=str(self.app.state.initiative.obs_visible_slots))
@@ -417,6 +418,7 @@ class InitiativeTrackerWindow:
         self.from_players_label = ttk.Label(player_row)
         self.source_player_combo = ttk.Combobox(player_row, state="readonly", textvariable=self.source_player_var)
         self.add_from_player_button = ttk.Button(player_row, command=self.add_from_player)
+        self.save_from_player_to_library_button = ttk.Button(player_row, command=self.save_selected_player_to_library)
 
         top_right = ttk.Frame(container)
         self.top_right = top_right
@@ -438,6 +440,11 @@ class InitiativeTrackerWindow:
 
         self.obs_topmost_check = ttk.Checkbutton(top_right, variable=self.obs_topmost_var, command=self.toggle_obs_topmost)
         self.obs_background_check = ttk.Checkbutton(top_right, variable=self.obs_background_var, command=self.toggle_obs_background)
+        self.show_hp_player_import_check = ttk.Checkbutton(
+            top_right,
+            variable=self.show_hp_player_import_var,
+            command=self.toggle_hp_player_import_visibility,
+        )
         self.obs_visible_slots_label = ttk.Label(top_right)
         self.obs_visible_slots_combo = ttk.Combobox(
             top_right,
@@ -580,10 +587,11 @@ class InitiativeTrackerWindow:
         self.from_players_label.grid_forget()
         self.source_player_combo.grid_forget()
         self.add_from_player_button.grid_forget()
+        self.save_from_player_to_library_button.grid_forget()
 
         for column in range(6):
             self.top_left.columnconfigure(column, weight=0)
-        for column in range(3):
+        for column in range(4):
             self.player_row.columnconfigure(column, weight=0)
 
         if compact:
@@ -599,13 +607,16 @@ class InitiativeTrackerWindow:
             self.add_button.grid(row=1, column=2, columnspan=2, sticky="ew", pady=(10, 0))
             self.save_to_library_button.grid(row=1, column=4, columnspan=2, sticky="ew", padx=(8, 0), pady=(10, 0))
 
-            self.player_row.grid(row=2, column=0, columnspan=6, sticky="ew", pady=(12, 0))
-            self.player_row.columnconfigure(0, weight=0)
-            self.player_row.columnconfigure(1, weight=1)
-            self.player_row.columnconfigure(2, weight=0)
-            self.from_players_label.grid(row=0, column=0, columnspan=3, sticky="w")
-            self.source_player_combo.grid(row=1, column=0, columnspan=2, sticky="ew", padx=(0, 8), pady=(8, 0))
-            self.add_from_player_button.grid(row=1, column=2, sticky="ew", pady=(8, 0))
+            if self.show_hp_player_import_var.get():
+                self.player_row.grid(row=2, column=0, columnspan=6, sticky="ew", pady=(12, 0))
+                self.player_row.columnconfigure(0, weight=0)
+                self.player_row.columnconfigure(1, weight=1)
+                self.player_row.columnconfigure(2, weight=0)
+                self.player_row.columnconfigure(3, weight=0)
+                self.from_players_label.grid(row=0, column=0, columnspan=4, sticky="w")
+                self.source_player_combo.grid(row=1, column=0, columnspan=2, sticky="ew", padx=(0, 8), pady=(8, 0))
+                self.add_from_player_button.grid(row=1, column=2, sticky="ew", padx=(0, 8), pady=(8, 0))
+                self.save_from_player_to_library_button.grid(row=1, column=3, sticky="ew", pady=(8, 0))
         else:
             self.top_left.columnconfigure(1, weight=1)
             self.top_left.columnconfigure(4, weight=1)
@@ -617,17 +628,20 @@ class InitiativeTrackerWindow:
             self.add_button.grid(row=0, column=4, sticky="ew", padx=(0, 8))
             self.save_to_library_button.grid(row=0, column=5, sticky="ew")
 
-            self.player_row.grid(row=1, column=0, columnspan=6, sticky="ew", pady=(10, 0))
-            self.player_row.columnconfigure(1, weight=1)
-            self.from_players_label.grid(row=0, column=0, sticky="w")
-            self.source_player_combo.grid(row=0, column=1, sticky="ew", padx=(8, 12))
-            self.add_from_player_button.grid(row=0, column=2, sticky="ew")
+            if self.show_hp_player_import_var.get():
+                self.player_row.grid(row=1, column=0, columnspan=6, sticky="ew", pady=(10, 0))
+                self.player_row.columnconfigure(1, weight=1)
+                self.from_players_label.grid(row=0, column=0, sticky="w")
+                self.source_player_combo.grid(row=0, column=1, sticky="ew", padx=(8, 12))
+                self.add_from_player_button.grid(row=0, column=2, sticky="ew", padx=(0, 8))
+                self.save_from_player_to_library_button.grid(row=0, column=3, sticky="ew")
 
     def _layout_action_controls(self, compact: bool) -> None:
         for button in self.action_buttons:
             button.grid_forget()
         self.obs_topmost_check.grid_forget()
         self.obs_background_check.grid_forget()
+        self.show_hp_player_import_check.grid_forget()
         self.obs_visible_slots_label.grid_forget()
         self.obs_visible_slots_combo.grid_forget()
 
@@ -644,8 +658,9 @@ class InitiativeTrackerWindow:
                 button.grid(row=row, column=column, sticky="ew", padx=(pad_left, pad_right), pady=(0, 8) if row == 0 else 0)
             self.obs_topmost_check.grid(row=2, column=0, columnspan=3, sticky="w", pady=(10, 0))
             self.obs_background_check.grid(row=3, column=0, columnspan=3, sticky="w", pady=(8, 0))
-            self.obs_visible_slots_label.grid(row=4, column=0, sticky="w", pady=(8, 0))
-            self.obs_visible_slots_combo.grid(row=4, column=1, sticky="w", pady=(8, 0))
+            self.show_hp_player_import_check.grid(row=4, column=0, columnspan=3, sticky="w", pady=(8, 0))
+            self.obs_visible_slots_label.grid(row=5, column=0, sticky="w", pady=(8, 0))
+            self.obs_visible_slots_combo.grid(row=5, column=1, sticky="w", pady=(8, 0))
         else:
             for column in range(6):
                 self.top_right.columnconfigure(column, weight=1)
@@ -657,8 +672,9 @@ class InitiativeTrackerWindow:
                     button.grid(row=0, column=index, sticky="ew", padx=padx)
             self.obs_topmost_check.grid(row=1, column=0, columnspan=6, sticky="w", pady=(10, 0))
             self.obs_background_check.grid(row=2, column=0, columnspan=6, sticky="w", pady=(8, 0))
-            self.obs_visible_slots_label.grid(row=3, column=0, columnspan=3, sticky="w", pady=(8, 0))
-            self.obs_visible_slots_combo.grid(row=3, column=3, columnspan=3, sticky="w", pady=(8, 0))
+            self.show_hp_player_import_check.grid(row=3, column=0, columnspan=6, sticky="w", pady=(8, 0))
+            self.obs_visible_slots_label.grid(row=4, column=0, columnspan=3, sticky="w", pady=(8, 0))
+            self.obs_visible_slots_combo.grid(row=4, column=3, columnspan=3, sticky="w", pady=(8, 0))
 
     def _layout_library_actions(self, compact: bool) -> None:
         self.library_actions.grid_forget()
@@ -776,6 +792,7 @@ class InitiativeTrackerWindow:
         self.save_to_library_button.config(text=self.t("initiative.action.save_to_library"))
         self.from_players_label.config(text=self.t("initiative.label.from_players"))
         self.add_from_player_button.config(text=self.t("initiative.action.add_from_players"))
+        self.save_from_player_to_library_button.config(text=self.t("initiative.action.save_selected_player_to_library"))
         self.start_button.config(text=self.t("initiative.action.start"))
         self.previous_button.config(text=self.t("initiative.action.previous_turn"))
         self.next_button.config(text=self.t("initiative.action.next_turn"))
@@ -786,7 +803,9 @@ class InitiativeTrackerWindow:
         )
         self.obs_topmost_check.config(text=self.t("initiative.obs_topmost"))
         self.obs_background_check.config(text=self.t("initiative.obs_background"))
+        self.show_hp_player_import_check.config(text=self.t("initiative.show_hp_player_import"))
         self.obs_visible_slots_label.config(text=self.t("initiative.obs_visible_slots"))
+        self.show_hp_player_import_var.set(self.app.state.initiative.show_hp_player_import)
         self.obs_topmost_var.set(self.app.state.initiative.obs_topmost)
         self.obs_background_var.set(self.app.state.initiative.obs_background)
         self.obs_visible_slots_var.set(str(self.app.state.initiative.obs_visible_slots))
@@ -933,6 +952,21 @@ class InitiativeTrackerWindow:
         initiative = _safe_int(self.add_initiative_var.get(), 0)
         portrait_ref = self.selected_portrait_ref()
         entry = InitiativeLibraryEntry(name=name, initiative=initiative, portrait_ref=portrait_ref)
+        self.app.state.initiative.library.append(entry)
+        self.persist(self.t("initiative.status.saved_to_library", name=entry.name))
+
+    def save_selected_player_to_library(self) -> None:
+        source_name = self.source_player_var.get().strip()
+        if not source_name:
+            self.set_status(self.t("initiative.status.no_player_selected"))
+            return
+        initiative = _safe_int(self.add_initiative_var.get(), 0)
+        portrait_ref = self.selected_portrait_ref()
+        entry = InitiativeLibraryEntry(
+            name=self.app.localized_player_name(source_name),
+            initiative=initiative,
+            portrait_ref=portrait_ref,
+        )
         self.app.state.initiative.library.append(entry)
         self.persist(self.t("initiative.status.saved_to_library", name=entry.name))
 
@@ -1274,6 +1308,11 @@ class InitiativeTrackerWindow:
         if self.obs_window is not None:
             self.obs_window.refresh()
         self.persist(self.t("initiative.status.obs_settings_saved"))
+
+    def toggle_hp_player_import_visibility(self) -> None:
+        self.app.state.initiative.show_hp_player_import = self.show_hp_player_import_var.get()
+        self._layout_mode = ""
+        self.persist(self.t("initiative.status.import_visibility_saved"))
 
     def change_obs_visible_slots(self) -> None:
         self.app.state.initiative.obs_visible_slots = max(4, min(12, _safe_int(self.obs_visible_slots_var.get(), 12)))
