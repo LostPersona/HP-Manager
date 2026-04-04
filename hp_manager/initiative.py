@@ -37,6 +37,8 @@ def _relative_to(path: Path, base: Path) -> Path | None:
 class InitiativeObsWindow:
     def __init__(self, tracker: "InitiativeTrackerWindow") -> None:
         self.tracker = tracker
+        self.card_widgets: list[dict[str, tk.Widget]] = []
+        self.empty_label: tk.Label | None = None
         self.window = tk.Toplevel(tracker.window)
         self.window.geometry("980x260")
         self.window.minsize(520, 220)
@@ -58,6 +60,80 @@ class InitiativeObsWindow:
         self.cards_frame.pack(fill="both", expand=True, padx=18, pady=(0, 18))
 
         self.refresh()
+
+    def _ensure_card_widgets(self, count: int) -> None:
+        while len(self.card_widgets) < count:
+            card = tk.Frame(self.cards_frame, highlightthickness=2)
+            portrait_host = tk.Frame(card, bd=0, highlightthickness=0)
+            portrait_host.pack(padx=12, pady=(12, 12))
+            name_label = tk.Label(card, width=14, anchor="center")
+            name_label.pack(fill="x", padx=10, pady=(0, 18))
+            self.card_widgets.append(
+                {
+                    "card": card,
+                    "portrait_host": portrait_host,
+                    "name_label": name_label,
+                }
+            )
+
+    def _hide_empty_state(self) -> None:
+        if self.empty_label is not None:
+            self.empty_label.pack_forget()
+
+    def _show_empty_state(self) -> None:
+        if self.empty_label is None:
+            self.empty_label = tk.Label(
+                self.cards_frame,
+                fg="#b6c2d0",
+                font=("Segoe UI", 14),
+                padx=24,
+                pady=24,
+            )
+        self.empty_label.config(
+            bg="#12161d",
+            text=self.tracker.t("initiative.empty_obs"),
+        )
+        self.empty_label.pack(fill="both", expand=True)
+
+    def _render_card(
+        self,
+        slot: dict[str, tk.Widget],
+        combatant: InitiativeCombatant,
+        is_current: bool,
+        is_same_turn: bool,
+    ) -> None:
+        card = slot["card"]
+        portrait_host = slot["portrait_host"]
+        name_label = slot["name_label"]
+        card_bg = "#25241e" if is_current else "#22211b" if is_same_turn else "#171c24"
+        outline = "#e4c16a" if is_current else "#c79761" if is_same_turn else "#2b3440"
+        portrait_size = 132 if is_same_turn else 112
+        top_padding = 0 if is_same_turn else 20
+
+        card.configure(bg=card_bg, highlightbackground=outline)
+        portrait_host.configure(bg=card_bg)
+        name_label.config(
+            bg=card_bg,
+            fg="#f4f5f7",
+            text=combatant.name,
+            font=("Segoe UI Semibold", 13 if is_same_turn else 12),
+            pady=14 if is_same_turn else 18,
+        )
+
+        if card.winfo_manager():
+            card.pack_configure(side="left", fill="y", padx=(0, 10), pady=(top_padding, 0))
+        else:
+            card.pack(side="left", fill="y", padx=(0, 10), pady=(top_padding, 0))
+
+        for child in portrait_host.winfo_children():
+            child.destroy()
+        portrait = self.tracker.create_portrait_widget(
+            portrait_host,
+            combatant.portrait_ref,
+            size=portrait_size,
+            background=card_bg,
+        )
+        portrait.pack()
 
     def _fixed_width(self, slot_count: int) -> int:
         side_padding = 36
@@ -126,51 +202,23 @@ class InitiativeObsWindow:
         self.current_label.config(bg=base_bg)
         self.tracker.app.apply_topmost(self.window, state.obs_topmost)
 
-        for child in self.cards_frame.winfo_children():
-            child.destroy()
-
         visible_combatants = self._visible_combatants(state)
         if not visible_combatants:
-            empty = tk.Label(
-                self.cards_frame,
-                bg="#12161d",
-                fg="#b6c2d0",
-                text=self.tracker.t("initiative.empty_obs"),
-                font=("Segoe UI", 14),
-                padx=24,
-                pady=24,
-            )
-            empty.pack(fill="both", expand=True)
+            for slot in self.card_widgets:
+                slot["card"].pack_forget()
+            self._show_empty_state()
             return
 
-        for actual_index, combatant in visible_combatants:
+        self._hide_empty_state()
+        self._ensure_card_widgets(len(visible_combatants))
+
+        for slot_index, (actual_index, combatant) in enumerate(visible_combatants):
             is_current = state.started and actual_index == state.current_turn_index
             is_same_turn = current_initiative is not None and combatant.initiative == current_initiative
-            card_bg = "#25241e" if is_current else "#22211b" if is_same_turn else "#171c24"
-            outline = "#e4c16a" if is_current else "#c79761" if is_same_turn else "#2b3440"
-            portrait_size = 132 if is_same_turn else 112
-            top_padding = 0 if is_same_turn else 20
-            card = tk.Frame(
-                self.cards_frame,
-                bg=card_bg,
-                highlightthickness=2,
-                highlightbackground=outline,
-            )
-            card.pack(side="left", fill="y", padx=(0, 10), pady=(top_padding, 0))
+            self._render_card(self.card_widgets[slot_index], combatant, is_current=is_current, is_same_turn=is_same_turn)
 
-            portrait = self.tracker.create_portrait_widget(card, combatant.portrait_ref, size=portrait_size, background=card["bg"])
-            portrait.pack(padx=12, pady=(12, 10 if is_same_turn else 12))
-
-            name_label = tk.Label(
-                card,
-                bg=card["bg"],
-                fg="#f4f5f7",
-                text=combatant.name,
-                font=("Segoe UI Semibold", 13 if is_same_turn else 12),
-                width=14,
-                anchor="center",
-            )
-            name_label.pack(fill="x", padx=10, pady=(0, 14 if is_same_turn else 18))
+        for slot in self.card_widgets[len(visible_combatants) :]:
+            slot["card"].pack_forget()
 
     def close(self) -> None:
         if self.window.winfo_exists():
