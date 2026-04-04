@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from hp_manager.models import InitiativeCombatant, InitiativeLibraryEntry
 from hp_manager.paths import bundled_portraits_dir, user_portraits_dir
+from hp_manager.storage import save_state
 
 if TYPE_CHECKING:
     from hp_manager.ui import HealthPointsApp
@@ -71,7 +72,7 @@ class InitiativeObsWindow:
             card = tk.Frame(self.cards_strip, highlightthickness=2)
             portrait_host = tk.Frame(card, bd=0, highlightthickness=0)
             portrait_host.pack(padx=12, pady=(12, 12))
-            name_label = tk.Label(card, width=14, anchor="center")
+            name_label = tk.Label(card, anchor="center", justify="center")
             name_label.pack(fill="x", padx=10, pady=(0, 18))
             self.card_widgets.append(
                 {
@@ -132,6 +133,7 @@ class InitiativeObsWindow:
             text=combatant.name,
             font=("Segoe UI Semibold", 13 if is_same_turn else 12),
             pady=14 if is_same_turn else 18,
+            wraplength=portrait_size + 24,
         )
 
         if card.winfo_manager():
@@ -795,7 +797,8 @@ class InitiativeTrackerWindow:
         self.status_var.set(status)
 
     def persist(self, status: str | None = None) -> None:
-        self.app.persist_and_refresh(status=status)
+        save_state(self.app.state)
+        self.refresh()
         if status:
             self.status_var.set(status)
 
