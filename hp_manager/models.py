@@ -413,6 +413,7 @@ class InitiativeState:
     show_hp_player_import: bool = True
     obs_topmost: bool = True
     obs_background: bool = True
+    obs_current_border: bool = False
     obs_visible_slots: int = 12
 
     def __post_init__(self) -> None:
@@ -445,6 +446,7 @@ class InitiativeState:
             "show_hp_player_import": self.show_hp_player_import,
             "obs_topmost": self.obs_topmost,
             "obs_background": self.obs_background,
+            "obs_current_border": self.obs_current_border,
             "obs_visible_slots": self.obs_visible_slots,
         }
 
@@ -469,6 +471,7 @@ class InitiativeState:
             show_hp_player_import=bool(data.get("show_hp_player_import", True)),
             obs_topmost=bool(data.get("obs_topmost", True)),
             obs_background=bool(data.get("obs_background", True)),
+            obs_current_border=bool(data.get("obs_current_border", False)),
             obs_visible_slots=max(4, min(12, _clean_int(data.get("obs_visible_slots"), 12))),
         )
 

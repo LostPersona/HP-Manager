@@ -28,6 +28,7 @@ INITIATIVE_COMPACT_BREAKPOINT = 1220
 INITIATIVE_OBS_CARD_GAP = 3
 INITIATIVE_OBS_PORTRAIT_SIZE = 112
 INITIATIVE_OBS_CURRENT_PORTRAIT_SIZE = 124
+INITIATIVE_OBS_CURRENT_BORDER_WIDTH = 3
 
 
 def _safe_int(value: str | int, default: int = 0) -> int:
@@ -117,6 +118,7 @@ class InitiativeObsWindow:
         is_current: bool,
         is_same_turn: bool,
         background_visible: bool,
+        current_border_visible: bool,
         base_bg: str,
     ) -> None:
         card = slot["card"]
@@ -139,11 +141,15 @@ class InitiativeObsWindow:
             portrait_pady = (0, 4)
             top_padding = 0
         portrait_size = INITIATIVE_OBS_CURRENT_PORTRAIT_SIZE if is_current else INITIATIVE_OBS_PORTRAIT_SIZE
+        portrait_border = INITIATIVE_OBS_CURRENT_BORDER_WIDTH if is_current and current_border_visible else 0
+        portrait_border_color = "#e4c16a" if is_current and current_border_visible else card_bg
 
         card.configure(bg=card_bg, highlightbackground=outline, highlightthickness=highlight)
         portrait_host.configure(
-            bg=card_bg,
-            highlightthickness=0,
+            bg=portrait_border_color,
+            highlightthickness=portrait_border,
+            highlightbackground=portrait_border_color,
+            highlightcolor=portrait_border_color,
         )
 
         if card.winfo_manager():
@@ -168,7 +174,7 @@ class InitiativeObsWindow:
 
     def _fixed_width(self, slot_count: int) -> int:
         side_padding = 36
-        slot_width = INITIATIVE_OBS_CURRENT_PORTRAIT_SIZE + 24
+        slot_width = INITIATIVE_OBS_CURRENT_PORTRAIT_SIZE + 24 + INITIATIVE_OBS_CURRENT_BORDER_WIDTH * 2
         return side_padding + slot_width * slot_count + INITIATIVE_OBS_CARD_GAP * (slot_count - 1)
 
     def _visible_combatants(self, state: object) -> list[tuple[int, InitiativeCombatant]]:
@@ -200,6 +206,7 @@ class InitiativeObsWindow:
     def refresh(self) -> None:
         state = self.tracker.app.state.initiative
         background_visible = state.obs_background
+        current_border_visible = state.obs_current_border
         base_bg = "#0e1014" if background_visible else TRANSPARENT_KEY
         self.window.title(self.tracker.t("initiative.obs_title"))
         current = self.tracker.current_combatant()
@@ -250,6 +257,7 @@ class InitiativeObsWindow:
                 is_current=is_current,
                 is_same_turn=is_same_turn,
                 background_visible=background_visible,
+                current_border_visible=current_border_visible,
                 base_bg=base_bg,
             )
 
@@ -431,6 +439,7 @@ class InitiativeTrackerWindow:
         self.show_hp_player_import_var = tk.BooleanVar(value=self.app.state.initiative.show_hp_player_import)
         self.obs_topmost_var = tk.BooleanVar(value=self.app.state.initiative.obs_topmost)
         self.obs_background_var = tk.BooleanVar(value=self.app.state.initiative.obs_background)
+        self.obs_current_border_var = tk.BooleanVar(value=self.app.state.initiative.obs_current_border)
         self.obs_visible_slots_var = tk.StringVar(value=str(self.app.state.initiative.obs_visible_slots))
 
         self.row_widgets: dict[str, InitiativeCombatantRow] = {}
@@ -530,6 +539,11 @@ class InitiativeTrackerWindow:
         self.turn_hint_label = ttk.Label(top_right, style="Muted.TLabel")
         self.obs_topmost_check = ttk.Checkbutton(top_right, variable=self.obs_topmost_var, command=self.toggle_obs_topmost)
         self.obs_background_check = ttk.Checkbutton(top_right, variable=self.obs_background_var, command=self.toggle_obs_background)
+        self.obs_current_border_check = ttk.Checkbutton(
+            top_right,
+            variable=self.obs_current_border_var,
+            command=self.toggle_obs_current_border,
+        )
         self.show_hp_player_import_check = ttk.Checkbutton(
             top_right,
             variable=self.show_hp_player_import_var,
@@ -738,6 +752,7 @@ class InitiativeTrackerWindow:
             button.grid_forget()
         self.obs_topmost_check.grid_forget()
         self.obs_background_check.grid_forget()
+        self.obs_current_border_check.grid_forget()
         self.show_hp_player_import_check.grid_forget()
         self.obs_visible_slots_label.grid_forget()
         self.obs_visible_slots_combo.grid_forget()
@@ -757,9 +772,10 @@ class InitiativeTrackerWindow:
             self.turn_hint_label.grid(row=3, column=0, columnspan=3, sticky="w", pady=(12, 0))
             self.obs_topmost_check.grid(row=4, column=0, columnspan=3, sticky="w", pady=(8, 0))
             self.obs_background_check.grid(row=5, column=0, columnspan=3, sticky="w", pady=(8, 0))
-            self.show_hp_player_import_check.grid(row=6, column=0, columnspan=3, sticky="w", pady=(8, 0))
-            self.obs_visible_slots_label.grid(row=7, column=0, sticky="w", pady=(8, 0))
-            self.obs_visible_slots_combo.grid(row=7, column=1, sticky="w", pady=(8, 0))
+            self.obs_current_border_check.grid(row=6, column=0, columnspan=3, sticky="w", pady=(8, 0))
+            self.show_hp_player_import_check.grid(row=7, column=0, columnspan=3, sticky="w", pady=(8, 0))
+            self.obs_visible_slots_label.grid(row=8, column=0, sticky="w", pady=(8, 0))
+            self.obs_visible_slots_combo.grid(row=8, column=1, sticky="w", pady=(8, 0))
         else:
             for column in range(6):
                 self.top_right.columnconfigure(column, weight=1)
@@ -773,9 +789,10 @@ class InitiativeTrackerWindow:
             self.turn_hint_label.grid(row=2, column=0, columnspan=6, sticky="w", pady=(12, 0))
             self.obs_topmost_check.grid(row=3, column=0, columnspan=6, sticky="w", pady=(8, 0))
             self.obs_background_check.grid(row=4, column=0, columnspan=6, sticky="w", pady=(8, 0))
-            self.show_hp_player_import_check.grid(row=5, column=0, columnspan=6, sticky="w", pady=(8, 0))
-            self.obs_visible_slots_label.grid(row=6, column=0, columnspan=3, sticky="w", pady=(8, 0))
-            self.obs_visible_slots_combo.grid(row=6, column=3, columnspan=3, sticky="w", pady=(8, 0))
+            self.obs_current_border_check.grid(row=5, column=0, columnspan=6, sticky="w", pady=(8, 0))
+            self.show_hp_player_import_check.grid(row=6, column=0, columnspan=6, sticky="w", pady=(8, 0))
+            self.obs_visible_slots_label.grid(row=7, column=0, columnspan=3, sticky="w", pady=(8, 0))
+            self.obs_visible_slots_combo.grid(row=7, column=3, columnspan=3, sticky="w", pady=(8, 0))
 
     def _layout_library_actions(self, compact: bool) -> None:
         self.library_actions.grid_forget()
@@ -920,11 +937,13 @@ class InitiativeTrackerWindow:
         self.turn_hint_label.config(text=self.t("initiative.options_header"))
         self.obs_topmost_check.config(text=self.t("initiative.obs_topmost"))
         self.obs_background_check.config(text=self.t("initiative.obs_background"))
+        self.obs_current_border_check.config(text=self.t("initiative.obs_current_border"))
         self.show_hp_player_import_check.config(text=self.t("initiative.show_hp_player_import"))
         self.obs_visible_slots_label.config(text=self.t("initiative.obs_visible_slots"))
         self.show_hp_player_import_var.set(self.app.state.initiative.show_hp_player_import)
         self.obs_topmost_var.set(self.app.state.initiative.obs_topmost)
         self.obs_background_var.set(self.app.state.initiative.obs_background)
+        self.obs_current_border_var.set(self.app.state.initiative.obs_current_border)
         self.obs_visible_slots_var.set(str(self.app.state.initiative.obs_visible_slots))
         self._apply_responsive_layout(max(self.window.winfo_width(), self.window.winfo_reqwidth()))
         self.add_helper_label.config(wraplength=max(260, self.top_left.winfo_width() - 24))
@@ -1539,6 +1558,12 @@ class InitiativeTrackerWindow:
 
     def toggle_obs_background(self) -> None:
         self.app.state.initiative.obs_background = self.obs_background_var.get()
+        if self.obs_window is not None:
+            self.obs_window.refresh()
+        self.persist(self.t("initiative.status.obs_settings_saved"))
+
+    def toggle_obs_current_border(self) -> None:
+        self.app.state.initiative.obs_current_border = self.obs_current_border_var.get()
         if self.obs_window is not None:
             self.obs_window.refresh()
         self.persist(self.t("initiative.status.obs_settings_saved"))
