@@ -378,8 +378,10 @@ class InitiativeCombatantRow:
         state = self.tracker.app.state.initiative
         index = self.tracker.combatant_index(self.combatant_id)
         is_current = state.started and index == state.current_turn_index
+        marker = self.tracker.t("initiative.current_marker") if is_current else self.tracker.t("initiative.ready_marker")
+        initiative_badge = self.tracker.t("initiative.initiative_badge", initiative=combatant.initiative)
         self.status_label.config(
-            text=self.tracker.t("initiative.current_marker") if is_current else self.tracker.t("initiative.ready_marker")
+            text=f"{index + 1}. {marker} - {initiative_badge}" if index >= 0 else f"{marker} - {initiative_badge}"
         )
         self.apply_button.config(text=self.tracker.t("action.apply"))
         self.assign_button.config(text=self.tracker.t("initiative.action.use_selected_portrait"))
@@ -419,6 +421,7 @@ class InitiativeTrackerWindow:
         self.combatant_library_refs_by_index: list[str] = []
         self.portrait_library: list[tuple[str, str]] = []
         self.library_refs_by_index: list[str] = []
+        self._row_order_signature: tuple[str, ...] = ()
         self._combatant_library_signature: tuple[object, ...] | None = None
         self._preview_signature: tuple[object, ...] | None = None
         self._layout_mode = ""
@@ -455,9 +458,10 @@ class InitiativeTrackerWindow:
         self.subtitle_label = ttk.Label(container, style="Muted.TLabel")
         self.subtitle_label.grid(row=0, column=1, sticky="e")
 
-        top_left = ttk.Frame(container)
+        top_left = ttk.LabelFrame(container, style="Section.TLabelframe", padding=10)
         self.top_left = top_left
 
+        self.add_helper_label = ttk.Label(top_left, style="Muted.TLabel")
         self.add_name_label = ttk.Label(top_left)
         self.add_name_entry = ttk.Entry(top_left, textvariable=self.add_name_var)
         self.add_initiative_label = ttk.Label(top_left)
@@ -490,6 +494,17 @@ class InitiativeTrackerWindow:
             self.obs_button,
         ]
 
+        self.turn_panel = ttk.LabelFrame(top_right, style="Section.TLabelframe", padding=10)
+        self.turn_panel.columnconfigure(0, weight=1)
+        self.turn_panel.columnconfigure(1, weight=0)
+        self.turn_round_label = ttk.Label(self.turn_panel, style="Muted.TLabel")
+        self.turn_round_label.grid(row=0, column=0, sticky="w")
+        self.turn_count_label = ttk.Label(self.turn_panel, style="Muted.TLabel")
+        self.turn_count_label.grid(row=0, column=1, sticky="e", padx=(12, 0))
+        self.turn_current_label = ttk.Label(self.turn_panel, style="Header.TLabel")
+        self.turn_current_label.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+
+        self.turn_hint_label = ttk.Label(top_right, style="Muted.TLabel")
         self.obs_topmost_check = ttk.Checkbutton(top_right, variable=self.obs_topmost_var, command=self.toggle_obs_topmost)
         self.obs_background_check = ttk.Checkbutton(top_right, variable=self.obs_background_var, command=self.toggle_obs_background)
         self.show_hp_player_import_check = ttk.Checkbutton(
@@ -629,6 +644,7 @@ class InitiativeTrackerWindow:
             self._apply_responsive_layout(event.width)
 
     def _layout_add_controls(self, compact: bool) -> None:
+        self.add_helper_label.grid_forget()
         self.add_name_label.grid_forget()
         self.add_name_entry.grid_forget()
         self.add_initiative_label.grid_forget()
@@ -652,15 +668,16 @@ class InitiativeTrackerWindow:
             self.top_left.columnconfigure(3, weight=1)
             self.top_left.columnconfigure(4, weight=1)
             self.top_left.columnconfigure(5, weight=1)
-            self.add_name_label.grid(row=0, column=0, sticky="w")
-            self.add_name_entry.grid(row=0, column=1, columnspan=5, sticky="ew", padx=(8, 0))
-            self.add_initiative_label.grid(row=1, column=0, sticky="w", pady=(10, 0))
-            self.add_initiative_entry.grid(row=1, column=1, sticky="ew", padx=(8, 8), pady=(10, 0))
-            self.add_button.grid(row=1, column=2, columnspan=2, sticky="ew", pady=(10, 0))
-            self.save_to_library_button.grid(row=1, column=4, columnspan=2, sticky="ew", padx=(8, 0), pady=(10, 0))
+            self.add_helper_label.grid(row=0, column=0, columnspan=6, sticky="w", pady=(0, 10))
+            self.add_name_label.grid(row=1, column=0, sticky="w")
+            self.add_name_entry.grid(row=1, column=1, columnspan=5, sticky="ew", padx=(8, 0))
+            self.add_initiative_label.grid(row=2, column=0, sticky="w", pady=(10, 0))
+            self.add_initiative_entry.grid(row=2, column=1, sticky="ew", padx=(8, 8), pady=(10, 0))
+            self.add_button.grid(row=2, column=2, columnspan=2, sticky="ew", pady=(10, 0))
+            self.save_to_library_button.grid(row=2, column=4, columnspan=2, sticky="ew", padx=(8, 0), pady=(10, 0))
 
             if self.show_hp_player_import_var.get():
-                self.player_row.grid(row=2, column=0, columnspan=6, sticky="ew", pady=(12, 0))
+                self.player_row.grid(row=3, column=0, columnspan=6, sticky="ew", pady=(12, 0))
                 self.player_row.columnconfigure(0, weight=0)
                 self.player_row.columnconfigure(1, weight=1)
                 self.player_row.columnconfigure(2, weight=0)
@@ -673,15 +690,16 @@ class InitiativeTrackerWindow:
             self.top_left.columnconfigure(1, weight=1)
             self.top_left.columnconfigure(4, weight=1)
             self.top_left.columnconfigure(5, weight=1)
-            self.add_name_label.grid(row=0, column=0, sticky="w")
-            self.add_name_entry.grid(row=0, column=1, sticky="ew", padx=(8, 12))
-            self.add_initiative_label.grid(row=0, column=2, sticky="w")
-            self.add_initiative_entry.grid(row=0, column=3, sticky="ew", padx=(8, 12))
-            self.add_button.grid(row=0, column=4, sticky="ew", padx=(0, 8))
-            self.save_to_library_button.grid(row=0, column=5, sticky="ew")
+            self.add_helper_label.grid(row=0, column=0, columnspan=6, sticky="w", pady=(0, 8))
+            self.add_name_label.grid(row=1, column=0, sticky="w")
+            self.add_name_entry.grid(row=1, column=1, sticky="ew", padx=(8, 12))
+            self.add_initiative_label.grid(row=1, column=2, sticky="w")
+            self.add_initiative_entry.grid(row=1, column=3, sticky="ew", padx=(8, 12))
+            self.add_button.grid(row=1, column=4, sticky="ew", padx=(0, 8))
+            self.save_to_library_button.grid(row=1, column=5, sticky="ew")
 
             if self.show_hp_player_import_var.get():
-                self.player_row.grid(row=1, column=0, columnspan=6, sticky="ew", pady=(10, 0))
+                self.player_row.grid(row=2, column=0, columnspan=6, sticky="ew", pady=(10, 0))
                 self.player_row.columnconfigure(1, weight=1)
                 self.from_players_label.grid(row=0, column=0, sticky="w")
                 self.source_player_combo.grid(row=0, column=1, sticky="ew", padx=(8, 12))
@@ -689,6 +707,8 @@ class InitiativeTrackerWindow:
                 self.save_from_player_to_library_button.grid(row=0, column=3, sticky="ew")
 
     def _layout_action_controls(self, compact: bool) -> None:
+        self.turn_panel.grid_forget()
+        self.turn_hint_label.grid_forget()
         for button in self.action_buttons:
             button.grid_forget()
         self.obs_topmost_check.grid_forget()
@@ -702,31 +722,35 @@ class InitiativeTrackerWindow:
                 self.top_right.columnconfigure(column, weight=0)
             for column in range(3):
                 self.top_right.columnconfigure(column, weight=1)
+            self.turn_panel.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 10))
             for index, button in enumerate(self.action_buttons):
-                row = index // 3
+                row = index // 3 + 1
                 column = index % 3
                 pad_left = 0 if column == 0 else 6
                 pad_right = 0 if column == 2 else 6
-                button.grid(row=row, column=column, sticky="ew", padx=(pad_left, pad_right), pady=(0, 8) if row == 0 else 0)
-            self.obs_topmost_check.grid(row=2, column=0, columnspan=3, sticky="w", pady=(10, 0))
-            self.obs_background_check.grid(row=3, column=0, columnspan=3, sticky="w", pady=(8, 0))
-            self.show_hp_player_import_check.grid(row=4, column=0, columnspan=3, sticky="w", pady=(8, 0))
-            self.obs_visible_slots_label.grid(row=5, column=0, sticky="w", pady=(8, 0))
-            self.obs_visible_slots_combo.grid(row=5, column=1, sticky="w", pady=(8, 0))
+                button.grid(row=row, column=column, sticky="ew", padx=(pad_left, pad_right), pady=(0, 8) if row == 1 else 0)
+            self.turn_hint_label.grid(row=3, column=0, columnspan=3, sticky="w", pady=(12, 0))
+            self.obs_topmost_check.grid(row=4, column=0, columnspan=3, sticky="w", pady=(8, 0))
+            self.obs_background_check.grid(row=5, column=0, columnspan=3, sticky="w", pady=(8, 0))
+            self.show_hp_player_import_check.grid(row=6, column=0, columnspan=3, sticky="w", pady=(8, 0))
+            self.obs_visible_slots_label.grid(row=7, column=0, sticky="w", pady=(8, 0))
+            self.obs_visible_slots_combo.grid(row=7, column=1, sticky="w", pady=(8, 0))
         else:
             for column in range(6):
                 self.top_right.columnconfigure(column, weight=1)
+            self.turn_panel.grid(row=0, column=0, columnspan=6, sticky="ew", pady=(0, 10))
             for index, button in enumerate(self.action_buttons):
                 padx = (0, 6) if index == 0 else (6, 0) if index == len(self.action_buttons) - 1 else 6
                 if isinstance(padx, int):
-                    button.grid(row=0, column=index, sticky="ew", padx=padx)
+                    button.grid(row=1, column=index, sticky="ew", padx=padx)
                 else:
-                    button.grid(row=0, column=index, sticky="ew", padx=padx)
-            self.obs_topmost_check.grid(row=1, column=0, columnspan=6, sticky="w", pady=(10, 0))
-            self.obs_background_check.grid(row=2, column=0, columnspan=6, sticky="w", pady=(8, 0))
-            self.show_hp_player_import_check.grid(row=3, column=0, columnspan=6, sticky="w", pady=(8, 0))
-            self.obs_visible_slots_label.grid(row=4, column=0, columnspan=3, sticky="w", pady=(8, 0))
-            self.obs_visible_slots_combo.grid(row=4, column=3, columnspan=3, sticky="w", pady=(8, 0))
+                    button.grid(row=1, column=index, sticky="ew", padx=padx)
+            self.turn_hint_label.grid(row=2, column=0, columnspan=6, sticky="w", pady=(12, 0))
+            self.obs_topmost_check.grid(row=3, column=0, columnspan=6, sticky="w", pady=(8, 0))
+            self.obs_background_check.grid(row=4, column=0, columnspan=6, sticky="w", pady=(8, 0))
+            self.show_hp_player_import_check.grid(row=5, column=0, columnspan=6, sticky="w", pady=(8, 0))
+            self.obs_visible_slots_label.grid(row=6, column=0, columnspan=3, sticky="w", pady=(8, 0))
+            self.obs_visible_slots_combo.grid(row=6, column=3, columnspan=3, sticky="w", pady=(8, 0))
 
     def _layout_library_actions(self, compact: bool) -> None:
         self.library_actions.grid_forget()
@@ -839,6 +863,8 @@ class InitiativeTrackerWindow:
         self.window.title(self.t("initiative.window_title"))
         self.title_label.config(text=self.t("initiative.header"))
         self.subtitle_label.config(text=self.t("initiative.subtitle"))
+        self.top_left.config(text=self.t("initiative.card.add_combatant"))
+        self.add_helper_label.config(text=self.t("initiative.add_helper"))
         self.add_name_label.config(text=self.t("label.name"))
         self.add_initiative_label.config(text=self.t("initiative.label.initiative"))
         self.add_button.config(text=self.t("initiative.action.add_combatant"))
@@ -854,6 +880,16 @@ class InitiativeTrackerWindow:
         self.obs_button.config(
             text=self.t("initiative.action.hide_obs") if self.obs_window is not None else self.t("initiative.action.show_obs")
         )
+        state = self.app.state.initiative
+        current = self.current_combatant()
+        self.turn_panel.config(text=self.t("initiative.card.turn_controls"))
+        self.turn_round_label.config(text=self.t("initiative.round_label", round_number=state.round_number))
+        self.turn_count_label.config(text=self.t("initiative.combatant_count", count=len(state.combatants)))
+        if state.started and current is not None:
+            self.turn_current_label.config(text=self.t("initiative.current_turn", name=current.name))
+        else:
+            self.turn_current_label.config(text=self.t("initiative.not_started"))
+        self.turn_hint_label.config(text=self.t("initiative.options_header"))
         self.obs_topmost_check.config(text=self.t("initiative.obs_topmost"))
         self.obs_background_check.config(text=self.t("initiative.obs_background"))
         self.show_hp_player_import_check.config(text=self.t("initiative.show_hp_player_import"))
@@ -863,6 +899,8 @@ class InitiativeTrackerWindow:
         self.obs_background_var.set(self.app.state.initiative.obs_background)
         self.obs_visible_slots_var.set(str(self.app.state.initiative.obs_visible_slots))
         self._apply_responsive_layout(max(self.window.winfo_width(), self.window.winfo_reqwidth()))
+        self.add_helper_label.config(wraplength=max(260, self.top_left.winfo_width() - 24))
+        self.turn_current_label.config(wraplength=max(220, self.top_right.winfo_width() - 24))
         self.encounter_card.config(text=self.t("initiative.card.encounter"))
         self.encounter_header.config(text=self.encounter_summary_text())
         self.roster_card.config(text=self.t("initiative.card.combatant_library"))
@@ -879,6 +917,7 @@ class InitiativeTrackerWindow:
 
         self.refresh_player_source_options()
         combatants = self.app.state.initiative.combatants
+        row_order_signature = tuple(combatant.combatant_id for combatant in combatants)
         existing_ids = {combatant.combatant_id for combatant in combatants}
         for stale_id in list(self.row_widgets):
             if stale_id not in existing_ids:
@@ -888,9 +927,17 @@ class InitiativeTrackerWindow:
             row = self.row_widgets.get(combatant.combatant_id)
             if row is None:
                 row = InitiativeCombatantRow(self, self.rows_frame, combatant)
-                row.frame.pack(fill="x", pady=4)
                 self.row_widgets[combatant.combatant_id] = row
             row.refresh(combatant)
+
+        if row_order_signature != self._row_order_signature:
+            for row in self.row_widgets.values():
+                row.frame.pack_forget()
+            for combatant in combatants:
+                row = self.row_widgets.get(combatant.combatant_id)
+                if row is not None:
+                    row.frame.pack(fill="x", pady=4)
+            self._row_order_signature = row_order_signature
 
         if self.obs_window is not None:
             self.obs_window.refresh()
