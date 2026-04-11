@@ -11,15 +11,23 @@ from hp_manager.models import InitiativeCombatant, InitiativeLibraryEntry
 from hp_manager.paths import bundled_portraits_dir, user_portraits_dir
 from hp_manager.storage import save_state
 
+try:
+    from PIL import Image, ImageTk
+except ImportError:
+    Image = None
+    ImageTk = None
+
 if TYPE_CHECKING:
     from hp_manager.ui import HealthPointsApp
 
 
-PORTRAIT_EXTENSIONS = {".png", ".gif", ".ppm", ".pgm"}
+PORTRAIT_EXTENSIONS = {".png", ".gif", ".ppm", ".pgm", ".jpg", ".jpeg"}
 TRANSPARENT_KEY = "#010203"
 OBS_SLOT_OPTIONS = tuple(str(value) for value in range(4, 13))
 INITIATIVE_COMPACT_BREAKPOINT = 1220
 INITIATIVE_OBS_CARD_GAP = 3
+INITIATIVE_OBS_PORTRAIT_SIZE = 112
+INITIATIVE_OBS_CURRENT_PORTRAIT_SIZE = 124
 
 
 def _safe_int(value: str | int, default: int = 0) -> int:
@@ -116,12 +124,12 @@ class InitiativeObsWindow:
         portrait_widget = slot["portrait_widget"]
         if background_visible:
             card_bg = "#25241e" if is_current else "#22211b" if is_same_turn else "#171c24"
-            outline = "#e4c16a" if is_current else "#c79761" if is_same_turn else "#2b3440"
-            highlight = 2
+            outline = card_bg
+            highlight = 0
             card_gap = INITIATIVE_OBS_CARD_GAP
             portrait_padx = 12
             portrait_pady = (12, 10 if is_same_turn else 12)
-            top_padding = 0 if is_same_turn else 20
+            top_padding = 0 if is_current else 12
         else:
             card_bg = base_bg
             outline = base_bg
@@ -130,10 +138,13 @@ class InitiativeObsWindow:
             portrait_padx = 0
             portrait_pady = (0, 4)
             top_padding = 0
-        portrait_size = 132 if is_same_turn else 112
+        portrait_size = INITIATIVE_OBS_CURRENT_PORTRAIT_SIZE if is_current else INITIATIVE_OBS_PORTRAIT_SIZE
 
         card.configure(bg=card_bg, highlightbackground=outline, highlightthickness=highlight)
-        portrait_host.configure(bg=card_bg)
+        portrait_host.configure(
+            bg=card_bg,
+            highlightthickness=0,
+        )
 
         if card.winfo_manager():
             card.pack_configure(side="left", fill="y", padx=(0, card_gap), pady=(top_padding, 0))
@@ -157,7 +168,7 @@ class InitiativeObsWindow:
 
     def _fixed_width(self, slot_count: int) -> int:
         side_padding = 36
-        slot_width = 132 + 24
+        slot_width = INITIATIVE_OBS_CURRENT_PORTRAIT_SIZE + 24
         return side_padding + slot_width * slot_count + INITIATIVE_OBS_CARD_GAP * (slot_count - 1)
 
     def _visible_combatants(self, state: object) -> list[tuple[int, InitiativeCombatant]]:
@@ -178,13 +189,10 @@ class InitiativeObsWindow:
             ordered.append((actual_index, combatants[actual_index]))
         return ordered
 
-    def _required_height(self, combatants: list[InitiativeCombatant], current_initiative: int | None) -> int:
+    def _required_height(self, combatants: list[InitiativeCombatant], has_current_turn: bool) -> int:
         if not combatants:
             return 220
-        largest_portrait = max(
-            132 if current_initiative is not None and combatant.initiative == current_initiative else 112
-            for combatant in combatants
-        )
+        largest_portrait = INITIATIVE_OBS_CURRENT_PORTRAIT_SIZE if has_current_turn else INITIATIVE_OBS_PORTRAIT_SIZE
         header_block = 72
         card_vertical_space = largest_portrait + 32
         return max(220, header_block + card_vertical_space + 18)
@@ -196,7 +204,7 @@ class InitiativeObsWindow:
         self.window.title(self.tracker.t("initiative.obs_title"))
         current = self.tracker.current_combatant()
         current_initiative = current.initiative if current is not None and state.started else None
-        required_height = self._required_height(state.combatants, current_initiative)
+        required_height = self._required_height(state.combatants, current is not None and state.started)
         min_width = self._fixed_width(state.obs_visible_slots)
         self.window.minsize(min_width, required_height)
         current_width = self.window.winfo_width()
@@ -427,7 +435,7 @@ class InitiativeTrackerWindow:
 
         self.row_widgets: dict[str, InitiativeCombatantRow] = {}
         self.obs_window: InitiativeObsWindow | None = None
-        self.portrait_cache: dict[tuple[str, int], tk.PhotoImage] = {}
+        self.portrait_cache: dict[tuple[str, int], object] = {}
         self.combatant_library_refs_by_index: list[str] = []
         self.portrait_library: list[tuple[str, str]] = []
         self.library_refs_by_index: list[str] = []
@@ -1230,7 +1238,7 @@ class InitiativeTrackerWindow:
             return None
         return path if path.exists() else None
 
-    def get_portrait_image(self, portrait_ref: str, size: int) -> tk.PhotoImage | None:
+    def get_portrait_image(self, portrait_ref: str, size: int) -> object | None:
         if not portrait_ref:
             return None
         cache_key = (portrait_ref, size)
@@ -1242,11 +1250,27 @@ class InitiativeTrackerWindow:
         try:
             image = tk.PhotoImage(file=str(image_path))
         except tk.TclError:
-            return None
+            image = self.get_pillow_portrait_image(image_path, size)
+            if image is None:
+                return None
+            self.portrait_cache[cache_key] = image
+            return image
         scale = max(1, math.ceil(max(image.width() / max(1, size), image.height() / max(1, size))))
         if scale > 1:
             image = image.subsample(scale, scale)
         self.portrait_cache[cache_key] = image
+        return image
+
+    def get_pillow_portrait_image(self, image_path: Path, size: int) -> object | None:
+        if Image is None or ImageTk is None:
+            return None
+        try:
+            with Image.open(image_path) as source:
+                resampling = getattr(getattr(Image, "Resampling", Image), "LANCZOS", 1)
+                source.thumbnail((size, size), resampling)
+                image = ImageTk.PhotoImage(source.copy())
+        except (OSError, tk.TclError):
+            return None
         return image
 
     def _draw_missing_portrait(self, canvas: tk.Canvas, size: int, background: str) -> None:
@@ -1329,7 +1353,7 @@ class InitiativeTrackerWindow:
             parent=self.window,
             title=self.t("initiative.dialog.import_title"),
             filetypes=[
-                (self.t("initiative.dialog.image_files"), "*.png *.gif *.ppm *.pgm"),
+                (self.t("initiative.dialog.image_files"), "*.png *.jpg *.jpeg *.gif *.ppm *.pgm"),
                 (self.t("initiative.dialog.all_files"), "*.*"),
             ],
         )
