@@ -19,6 +19,7 @@ PORTRAIT_EXTENSIONS = {".png", ".gif", ".ppm", ".pgm"}
 TRANSPARENT_KEY = "#010203"
 OBS_SLOT_OPTIONS = tuple(str(value) for value in range(4, 13))
 INITIATIVE_COMPACT_BREAKPOINT = 1220
+INITIATIVE_OBS_CARD_GAP = 3
 
 
 def _safe_int(value: str | int, default: int = 0) -> int:
@@ -72,13 +73,13 @@ class InitiativeObsWindow:
             card = tk.Frame(self.cards_strip, highlightthickness=2)
             portrait_host = tk.Frame(card, bd=0, highlightthickness=0)
             portrait_host.pack(padx=12, pady=(12, 12))
-            name_label = tk.Label(card, anchor="center", justify="center")
-            name_label.pack(fill="x", padx=10, pady=(0, 18))
+            name_canvas = tk.Canvas(card, highlightthickness=0, bd=0)
+            name_canvas.pack(fill="x", padx=10, pady=(0, 18))
             self.card_widgets.append(
                 {
                     "card": card,
                     "portrait_host": portrait_host,
-                    "name_label": name_label,
+                    "name_label": name_canvas,
                     "portrait_widget": None,
                     "portrait_signature": None,
                 }
@@ -115,43 +116,48 @@ class InitiativeObsWindow:
     ) -> None:
         card = slot["card"]
         portrait_host = slot["portrait_host"]
-        name_label = slot["name_label"]
+        name_canvas = slot["name_label"]
         portrait_widget = slot["portrait_widget"]
         if background_visible:
             card_bg = "#25241e" if is_current else "#22211b" if is_same_turn else "#171c24"
             outline = "#e4c16a" if is_current else "#c79761" if is_same_turn else "#2b3440"
             highlight = 2
-            card_gap = 10
+            card_gap = INITIATIVE_OBS_CARD_GAP
             portrait_padx = 12
             portrait_pady = (12, 10 if is_same_turn else 12)
             name_padx = 10
-            name_width = 14
             top_padding = 0 if is_same_turn else 20
         else:
             card_bg = base_bg
             outline = base_bg
             highlight = 0
-            card_gap = 3
+            card_gap = INITIATIVE_OBS_CARD_GAP
             portrait_padx = 0
             portrait_pady = (0, 4)
-            name_padx = 2
-            name_width = 0
+            name_padx = 0
             top_padding = 0
         portrait_size = 132 if is_same_turn else 112
-        name_wraplength = portrait_size + 24 if background_visible else portrait_size
-        if not background_visible:
-            name_width = max(10, portrait_size // 8)
+        card_width = portrait_size + portrait_padx * 2
+        name_width = max(24, card_width - name_padx * 2)
+        name_height = 44 if background_visible else 38
 
         card.configure(bg=card_bg, highlightbackground=outline, highlightthickness=highlight)
         portrait_host.configure(bg=card_bg)
-        name_label.config(
+        name_canvas.config(
             bg=card_bg,
-            fg="#f4f5f7",
+            width=name_width,
+            height=name_height,
+        )
+        name_canvas.delete("all")
+        name_canvas.create_text(
+            name_width // 2,
+            2,
+            anchor="n",
+            fill="#f4f5f7",
             text=combatant.name,
             font=("Segoe UI Semibold", 13 if is_same_turn else 12),
-            pady=14 if is_same_turn else 18,
             width=name_width,
-            wraplength=name_wraplength,
+            justify="center",
         )
 
         if card.winfo_manager():
@@ -159,7 +165,7 @@ class InitiativeObsWindow:
         else:
             card.pack(side="left", fill="y", padx=(0, card_gap), pady=(top_padding, 0))
         portrait_host.pack_configure(padx=portrait_padx, pady=portrait_pady)
-        name_label.pack_configure(padx=name_padx, pady=(0, 14 if is_same_turn else 18))
+        name_canvas.pack_configure(padx=name_padx, pady=(0, 0))
 
         portrait_signature = (combatant.portrait_ref, portrait_size, card_bg)
         if portrait_signature != slot["portrait_signature"] or portrait_widget is None:
@@ -177,9 +183,8 @@ class InitiativeObsWindow:
 
     def _fixed_width(self, slot_count: int) -> int:
         side_padding = 36
-        card_gap = 10
-        slot_width = 132 + 28
-        return side_padding + slot_width * slot_count + card_gap * (slot_count - 1)
+        slot_width = 132 + 24
+        return side_padding + slot_width * slot_count + INITIATIVE_OBS_CARD_GAP * (slot_count - 1)
 
     def _visible_combatants(self, state: object) -> list[tuple[int, InitiativeCombatant]]:
         combatants = self.tracker.app.state.initiative.combatants
