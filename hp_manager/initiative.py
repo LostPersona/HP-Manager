@@ -280,6 +280,7 @@ class InitiativeCombatantRow:
         self.tracker = tracker
         self.combatant_id = combatant.combatant_id
         self._portrait_ref = ""
+        self._initiative_apply_after_id: str | None = None
         self.frame = ttk.Frame(parent, style="Card.TFrame", padding=10)
         self.frame.columnconfigure(1, weight=1)
 
@@ -300,8 +301,6 @@ class InitiativeCombatantRow:
         self.name_entry.grid(row=0, column=0, sticky="ew", padx=(0, 8))
         self.initiative_entry = ttk.Entry(edit_row, textvariable=self.initiative_var, width=8)
         self.initiative_entry.grid(row=0, column=1, sticky="ew", padx=(0, 8))
-        self.apply_button = ttk.Button(edit_row, command=self.apply_edits)
-        self.apply_button.grid(row=0, column=2, sticky="ew")
 
         actions = ttk.Frame(self.frame)
         actions.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(10, 0))
@@ -320,7 +319,10 @@ class InitiativeCombatantRow:
         self.remove_button.grid(row=0, column=4, sticky="ew", padx=(4, 0))
 
         self.name_entry.bind("<Return>", lambda _event: self.apply_edits())
-        self.initiative_entry.bind("<Return>", lambda _event: self.apply_edits())
+        self.name_entry.bind("<FocusOut>", lambda _event: self.apply_edits())
+        self.initiative_entry.bind("<KeyRelease>", lambda _event: self.schedule_initiative_apply())
+        self.initiative_entry.bind("<Return>", lambda _event: self.apply_initiative_edits())
+        self.initiative_entry.bind("<FocusOut>", lambda _event: self.apply_initiative_edits())
         self.refresh(combatant)
 
     def _render_portrait(self, combatant: InitiativeCombatant) -> None:
@@ -337,8 +339,34 @@ class InitiativeCombatantRow:
         combatant = self.tracker.combatant_by_id(self.combatant_id)
         if combatant is None:
             return
-        combatant.name = self.tracker.app.localized_player_name(self.name_var.get())
-        combatant.initiative = _safe_int(self.initiative_var.get(), combatant.initiative)
+        name = self.tracker.app.localized_player_name(self.name_var.get())
+        initiative = _safe_int(self.initiative_var.get(), combatant.initiative)
+        if combatant.name == name and combatant.initiative == initiative:
+            return
+        combatant.name = name
+        combatant.initiative = initiative
+        self.tracker.persist(self.tracker.t("initiative.status.updated", name=combatant.name))
+
+    def schedule_initiative_apply(self) -> None:
+        if self._initiative_apply_after_id is not None:
+            self.frame.after_cancel(self._initiative_apply_after_id)
+        self._initiative_apply_after_id = self.frame.after(300, self.apply_initiative_edits)
+
+    def apply_initiative_edits(self) -> None:
+        if self._initiative_apply_after_id is not None:
+            pending_job = self._initiative_apply_after_id
+            self._initiative_apply_after_id = None
+            try:
+                self.frame.after_cancel(pending_job)
+            except tk.TclError:
+                pass
+        combatant = self.tracker.combatant_by_id(self.combatant_id)
+        if combatant is None:
+            return
+        initiative = _safe_int(self.initiative_var.get(), combatant.initiative)
+        if combatant.initiative == initiative:
+            return
+        combatant.initiative = initiative
         self.tracker.persist(self.tracker.t("initiative.status.updated", name=combatant.name))
 
     def assign_selected_portrait(self) -> None:
@@ -379,11 +407,11 @@ class InitiativeCombatantRow:
         index = self.tracker.combatant_index(self.combatant_id)
         is_current = state.started and index == state.current_turn_index
         marker = self.tracker.t("initiative.current_marker") if is_current else self.tracker.t("initiative.ready_marker")
-        initiative_badge = self.tracker.t("initiative.initiative_badge", initiative=combatant.initiative)
-        self.status_label.config(
-            text=f"{index + 1}. {marker} - {initiative_badge}" if index >= 0 else f"{marker} - {initiative_badge}"
-        )
-        self.apply_button.config(text=self.tracker.t("action.apply"))
+        status = f"{index + 1}. {marker}" if index >= 0 else marker
+        if combatant.initiative != 0:
+            initiative_badge = self.tracker.t("initiative.initiative_badge", initiative=combatant.initiative)
+            status = f"{status} - {initiative_badge}"
+        self.status_label.config(text=status)
         self.assign_button.config(text=self.tracker.t("initiative.action.use_selected_portrait"))
         self.clear_button.config(text=self.tracker.t("initiative.action.clear_portrait"))
         self.up_button.config(text=self.tracker.t("initiative.action.move_up"))
@@ -391,6 +419,9 @@ class InitiativeCombatantRow:
         self.remove_button.config(text=self.tracker.t("action.remove"))
 
     def destroy(self) -> None:
+        if self._initiative_apply_after_id is not None:
+            self.frame.after_cancel(self._initiative_apply_after_id)
+            self._initiative_apply_after_id = None
         self.frame.destroy()
 
 
@@ -574,9 +605,11 @@ class InitiativeTrackerWindow:
         roster_actions = ttk.Frame(self.roster_card)
         self.roster_actions = roster_actions
         self.add_selected_library_button = ttk.Button(roster_actions, command=self.add_selected_library_combatant)
+        self.set_library_portrait_button = ttk.Button(roster_actions, command=self.assign_selected_portrait_to_library_entry)
         self.delete_library_entry_button = ttk.Button(roster_actions, command=self.delete_selected_library_entry)
         self.roster_action_buttons = [
             self.add_selected_library_button,
+            self.set_library_portrait_button,
             self.delete_library_entry_button,
         ]
 
@@ -781,19 +814,21 @@ class InitiativeTrackerWindow:
         self.roster_actions.grid_forget()
         for button in self.roster_action_buttons:
             button.grid_forget()
-        for column in range(2):
+        for column in range(3):
             self.roster_actions.columnconfigure(column, weight=0)
 
         self.roster_actions.grid(row=2, column=0, sticky="ew", pady=(10, 0))
         if compact:
             self.roster_actions.columnconfigure(0, weight=1)
             self.add_selected_library_button.grid(row=0, column=0, sticky="ew")
-            self.delete_library_entry_button.grid(row=1, column=0, sticky="ew", pady=(8, 0))
+            self.set_library_portrait_button.grid(row=1, column=0, sticky="ew", pady=(8, 0))
+            self.delete_library_entry_button.grid(row=2, column=0, sticky="ew", pady=(8, 0))
         else:
-            for column in range(2):
+            for column in range(3):
                 self.roster_actions.columnconfigure(column, weight=1)
             self.add_selected_library_button.grid(row=0, column=0, sticky="ew", padx=(0, 6))
-            self.delete_library_entry_button.grid(row=0, column=1, sticky="ew", padx=(6, 0))
+            self.set_library_portrait_button.grid(row=0, column=1, sticky="ew", padx=6)
+            self.delete_library_entry_button.grid(row=0, column=2, sticky="ew", padx=(6, 0))
 
     def _apply_responsive_layout(self, width: int) -> None:
         compact = width < INITIATIVE_COMPACT_BREAKPOINT
@@ -906,6 +941,7 @@ class InitiativeTrackerWindow:
         self.roster_card.config(text=self.t("initiative.card.combatant_library"))
         self.roster_header.config(text=self.t("initiative.library_header"))
         self.add_selected_library_button.config(text=self.t("initiative.action.add_selected_library"))
+        self.set_library_portrait_button.config(text=self.t("initiative.action.set_library_portrait"))
         self.delete_library_entry_button.config(text=self.t("initiative.action.delete_library_entry"))
         self.library_card.config(text=self.t("initiative.card.library"))
         self.search_label.config(text=self.t("initiative.label.search"))
@@ -1045,6 +1081,25 @@ class InitiativeTrackerWindow:
             portrait_ref=portrait_ref,
         )
 
+    def _next_library_combatant_name(self, base_name: str) -> str:
+        name = self.app.localized_player_name(base_name)
+        used_suffixes: set[int] = set()
+        prefix = f"{name} "
+        for combatant in self.app.state.initiative.combatants:
+            existing_name = combatant.name.strip()
+            if existing_name == name:
+                used_suffixes.add(1)
+            elif existing_name.startswith(prefix):
+                suffix = existing_name[len(prefix) :]
+                if suffix.isdigit():
+                    used_suffixes.add(_safe_int(suffix, 0))
+        if not used_suffixes:
+            return name
+        suffix = 2
+        while suffix in used_suffixes:
+            suffix += 1
+        return f"{name} {suffix}"
+
     def _insertion_index_for_started_encounter(self, initiative: int) -> int:
         index = 0
         combatants = self.app.state.initiative.combatants
@@ -1092,10 +1147,27 @@ class InitiativeTrackerWindow:
         if entry is None:
             self.set_status(self.t("initiative.status.no_library_selected"))
             return
-        combatant = self._build_combatant(entry.name, 0, entry.portrait_ref)
+        combatant = self._build_combatant(self._next_library_combatant_name(entry.name), 0, entry.portrait_ref)
         self._add_combatant_to_encounter(combatant)
         status_key = "initiative.status.inserted" if self.app.state.initiative.started else "initiative.status.added"
         self.persist(self.t(status_key, name=combatant.name))
+
+    def assign_selected_portrait_to_library_entry(self) -> None:
+        entry_id = self.selected_library_entry_id()
+        if not entry_id:
+            self.set_status(self.t("initiative.status.no_library_selected"))
+            return
+        entry = self.library_entry_by_id(entry_id)
+        if entry is None:
+            self.set_status(self.t("initiative.status.no_library_selected"))
+            return
+        selected = self.selected_portrait_ref()
+        if not selected:
+            self.set_status(self.t("initiative.status.no_portrait_selected"))
+            return
+        entry.portrait_ref = selected
+        self._combatant_library_signature = None
+        self.persist(self.t("initiative.status.library_portrait_updated", name=entry.name))
 
     def delete_selected_library_entry(self) -> None:
         entry_id = self.selected_library_entry_id()
