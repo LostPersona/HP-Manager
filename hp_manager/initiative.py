@@ -125,6 +125,7 @@ class InitiativeObsWindow:
             portrait_padx = 12
             portrait_pady = (12, 10 if is_same_turn else 12)
             name_padx = 10
+            name_width = 14
             top_padding = 0 if is_same_turn else 20
         else:
             card_bg = base_bg
@@ -134,8 +135,12 @@ class InitiativeObsWindow:
             portrait_padx = 0
             portrait_pady = (0, 4)
             name_padx = 2
+            name_width = 0
             top_padding = 0
         portrait_size = 132 if is_same_turn else 112
+        name_wraplength = portrait_size + 24 if background_visible else portrait_size
+        if not background_visible:
+            name_width = max(10, portrait_size // 8)
 
         card.configure(bg=card_bg, highlightbackground=outline, highlightthickness=highlight)
         portrait_host.configure(bg=card_bg)
@@ -145,7 +150,8 @@ class InitiativeObsWindow:
             text=combatant.name,
             font=("Segoe UI Semibold", 13 if is_same_turn else 12),
             pady=14 if is_same_turn else 18,
-            wraplength=portrait_size + 24,
+            width=name_width,
+            wraplength=name_wraplength,
         )
 
         if card.winfo_manager():
