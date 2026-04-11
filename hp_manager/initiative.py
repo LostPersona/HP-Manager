@@ -7,7 +7,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import TYPE_CHECKING
 
-from hp_manager.models import InitiativeCombatant, InitiativeLibraryEntry
+from hp_manager.models import InitiativeCombatant, InitiativeLibraryEntry, InitiativePreparedEntry
 from hp_manager.paths import bundled_portraits_dir, user_portraits_dir
 from hp_manager.storage import save_state
 
@@ -141,6 +141,7 @@ class InitiativeObsWindow:
             portrait_pady = (0, 4)
             top_padding = 0
         portrait_size = INITIATIVE_OBS_CURRENT_PORTRAIT_SIZE if is_current else INITIATIVE_OBS_PORTRAIT_SIZE
+        portrait_width, portrait_height = self.tracker.portrait_dimensions(portrait_size)
         portrait_border = INITIATIVE_OBS_CURRENT_BORDER_WIDTH if is_current and current_border_visible else 0
         portrait_border_color = "#e4c16a" if is_current and current_border_visible else card_bg
 
@@ -158,7 +159,7 @@ class InitiativeObsWindow:
             card.pack(side="left", fill="y", padx=(0, card_gap), pady=(top_padding, 0))
         portrait_host.pack_configure(padx=portrait_padx, pady=portrait_pady)
 
-        portrait_signature = (combatant.portrait_ref, portrait_size, card_bg)
+        portrait_signature = (combatant.portrait_ref, portrait_size, portrait_width, portrait_height, card_bg)
         if portrait_signature != slot["portrait_signature"] or portrait_widget is None:
             portrait = self.tracker.refresh_portrait_widget(
                 portrait_widget,
@@ -174,7 +175,8 @@ class InitiativeObsWindow:
 
     def _fixed_width(self, slot_count: int) -> int:
         side_padding = 36
-        slot_width = INITIATIVE_OBS_CURRENT_PORTRAIT_SIZE + 24 + INITIATIVE_OBS_CURRENT_BORDER_WIDTH * 2
+        portrait_width, _portrait_height = self.tracker.portrait_dimensions(INITIATIVE_OBS_CURRENT_PORTRAIT_SIZE)
+        slot_width = portrait_width + 24 + INITIATIVE_OBS_CURRENT_BORDER_WIDTH * 2
         return side_padding + slot_width * slot_count + INITIATIVE_OBS_CARD_GAP * (slot_count - 1)
 
     def _visible_combatants(self, state: object) -> list[tuple[int, InitiativeCombatant]]:
@@ -187,7 +189,9 @@ class InitiativeObsWindow:
 
         start_index = 0
         if self.tracker.app.state.initiative.started:
-            start_index = max(0, min(self.tracker.app.state.initiative.current_turn_index, len(combatants) - 1))
+            current_index = max(0, min(self.tracker.app.state.initiative.current_turn_index, len(combatants) - 1))
+            current_slot = slot_count // 2
+            start_index = (current_index - current_slot) % len(combatants)
 
         ordered: list[tuple[int, InitiativeCombatant]] = []
         for offset in range(min(slot_count, len(combatants))):
@@ -198,7 +202,8 @@ class InitiativeObsWindow:
     def _required_height(self, combatants: list[InitiativeCombatant], has_current_turn: bool) -> int:
         if not combatants:
             return 220
-        largest_portrait = INITIATIVE_OBS_CURRENT_PORTRAIT_SIZE if has_current_turn else INITIATIVE_OBS_PORTRAIT_SIZE
+        portrait_size = INITIATIVE_OBS_CURRENT_PORTRAIT_SIZE if has_current_turn else INITIATIVE_OBS_PORTRAIT_SIZE
+        _portrait_width, largest_portrait = self.tracker.portrait_dimensions(portrait_size)
         header_block = 72
         card_vertical_space = largest_portrait + 32
         return max(220, header_block + card_vertical_space + 18)
@@ -274,7 +279,7 @@ class InitiativeCombatantRow:
     def __init__(self, tracker: "InitiativeTrackerWindow", parent: ttk.Frame, combatant: InitiativeCombatant) -> None:
         self.tracker = tracker
         self.combatant_id = combatant.combatant_id
-        self._portrait_ref = ""
+        self._portrait_signature: tuple[str, str] = ("", "")
         self._initiative_apply_after_id: str | None = None
         self.frame = ttk.Frame(parent, style="Card.TFrame", padding=10)
         self.frame.columnconfigure(1, weight=1)
@@ -321,14 +326,15 @@ class InitiativeCombatantRow:
         self.refresh(combatant)
 
     def _render_portrait(self, combatant: InitiativeCombatant) -> None:
-        if combatant.portrait_ref == self._portrait_ref:
+        portrait_signature = (combatant.portrait_ref, self.tracker.app.state.initiative.portrait_aspect_ratio)
+        if portrait_signature == self._portrait_signature:
             return
         existing = self.portrait_container.winfo_children()
         widget = existing[0] if existing else None
         widget = self.tracker.refresh_portrait_widget(widget, self.portrait_container, combatant.portrait_ref, size=72, background="#171a1f")
         if not widget.winfo_manager():
             widget.pack()
-        self._portrait_ref = combatant.portrait_ref
+        self._portrait_signature = portrait_signature
 
     def apply_edits(self) -> None:
         combatant = self.tracker.combatant_by_id(self.combatant_id)
@@ -434,6 +440,8 @@ class InitiativeTrackerWindow:
         self.search_var = tk.StringVar()
         self.add_name_var = tk.StringVar()
         self.add_initiative_var = tk.StringVar(value="0")
+        self.prepared_count_var = tk.StringVar(value="1")
+        self.prepared_initiative_var = tk.StringVar(value="0")
         player_names = [player.name for player in self.app.state.players] or [""]
         self.source_player_var = tk.StringVar(value=player_names[0])
         self.show_hp_player_import_var = tk.BooleanVar(value=self.app.state.initiative.show_hp_player_import)
@@ -441,16 +449,22 @@ class InitiativeTrackerWindow:
         self.obs_background_var = tk.BooleanVar(value=self.app.state.initiative.obs_background)
         self.obs_current_border_var = tk.BooleanVar(value=self.app.state.initiative.obs_current_border)
         self.obs_visible_slots_var = tk.StringVar(value=str(self.app.state.initiative.obs_visible_slots))
+        self.portrait_aspect_ratio_var = tk.StringVar(
+            value=self.portrait_aspect_label_for_code(self.app.state.initiative.portrait_aspect_ratio)
+        )
 
         self.row_widgets: dict[str, InitiativeCombatantRow] = {}
         self.obs_window: InitiativeObsWindow | None = None
-        self.portrait_cache: dict[tuple[str, int], object] = {}
+        self.portrait_cache: dict[tuple[str, int, int], object] = {}
         self.combatant_library_refs_by_index: list[str] = []
+        self.prepared_refs_by_index: list[str] = []
         self.portrait_library: list[tuple[str, str]] = []
         self.library_refs_by_index: list[str] = []
         self._row_order_signature: tuple[str, ...] = ()
         self._combatant_library_signature: tuple[object, ...] | None = None
+        self._prepared_queue_signature: tuple[object, ...] | None = None
         self._preview_signature: tuple[object, ...] | None = None
+        self._prepared_apply_after_id: str | None = None
         self._layout_mode = ""
 
         self._build_layout()
@@ -461,7 +475,33 @@ class InitiativeTrackerWindow:
     def t(self, key: str, **kwargs: object) -> str:
         return self.app.t(key, **kwargs)
 
+    def portrait_aspect_label_for_code(self, code: str) -> str:
+        normalized = code if code in {"1:1", "4:3", "3:4"} else "3:4"
+        return self.t(f"overlay.aspect.{normalized}")
+
+    def portrait_aspect_code_from_label(self, label: str) -> str:
+        for code in ("3:4", "1:1", "4:3"):
+            if label == self.portrait_aspect_label_for_code(code):
+                return code
+        return "3:4"
+
+    def portrait_dimensions(self, size: int) -> tuple[int, int]:
+        base = max(1, int(size))
+        aspect_ratio = self.app.state.initiative.portrait_aspect_ratio
+        if aspect_ratio == "3:4":
+            return base, max(1, int(base * 4 / 3))
+        if aspect_ratio == "1:1":
+            return base, base
+        return max(1, int(base * 4 / 3)), base
+
     def close(self) -> None:
+        if self._prepared_apply_after_id is not None:
+            pending_job = self._prepared_apply_after_id
+            self._prepared_apply_after_id = None
+            try:
+                self.window.after_cancel(pending_job)
+            except tk.TclError:
+                pass
         if self.obs_window is not None:
             self.obs_window.close()
         if self.window.winfo_exists():
@@ -558,6 +598,14 @@ class InitiativeTrackerWindow:
             width=6,
         )
         self.obs_visible_slots_combo.bind("<<ComboboxSelected>>", lambda _event: self.change_obs_visible_slots())
+        self.portrait_aspect_label = ttk.Label(top_right)
+        self.portrait_aspect_combo = ttk.Combobox(
+            top_right,
+            state="readonly",
+            textvariable=self.portrait_aspect_ratio_var,
+            width=18,
+        )
+        self.portrait_aspect_combo.bind("<<ComboboxSelected>>", lambda _event: self.change_portrait_aspect_ratio())
 
         self.encounter_card = ttk.LabelFrame(container, style="Section.TLabelframe", padding=10)
         self.encounter_card.columnconfigure(0, weight=1)
@@ -580,7 +628,8 @@ class InitiativeTrackerWindow:
         self.side_panel = ttk.Frame(container)
         self.side_panel.columnconfigure(0, weight=1)
         self.side_panel.rowconfigure(0, weight=1)
-        self.side_panel.rowconfigure(1, weight=2)
+        self.side_panel.rowconfigure(1, weight=1)
+        self.side_panel.rowconfigure(2, weight=1)
 
         self.roster_card = ttk.LabelFrame(self.side_panel, style="Section.TLabelframe", padding=10)
         self.roster_card.columnconfigure(0, weight=1)
@@ -606,17 +655,74 @@ class InitiativeTrackerWindow:
         roster_scroll = ttk.Scrollbar(roster_list_frame, orient="vertical", command=self.roster_list.yview)
         roster_scroll.grid(row=0, column=1, sticky="ns")
         self.roster_list.configure(yscrollcommand=roster_scroll.set)
-        self.roster_list.bind("<Double-Button-1>", lambda _event: self.add_selected_library_combatant())
+        self.roster_list.bind("<Double-Button-1>", lambda _event: self.queue_selected_library_combatant())
 
         roster_actions = ttk.Frame(self.roster_card)
         self.roster_actions = roster_actions
-        self.add_selected_library_button = ttk.Button(roster_actions, command=self.add_selected_library_combatant)
+        self.add_selected_library_button = ttk.Button(roster_actions, command=self.queue_selected_library_combatant)
+        self.add_selected_library_now_button = ttk.Button(roster_actions, command=self.add_selected_library_combatant)
         self.set_library_portrait_button = ttk.Button(roster_actions, command=self.assign_selected_portrait_to_library_entry)
         self.delete_library_entry_button = ttk.Button(roster_actions, command=self.delete_selected_library_entry)
         self.roster_action_buttons = [
             self.add_selected_library_button,
+            self.add_selected_library_now_button,
             self.set_library_portrait_button,
             self.delete_library_entry_button,
+        ]
+
+        self.prepared_card = ttk.LabelFrame(self.side_panel, style="Section.TLabelframe", padding=10)
+        self.prepared_card.columnconfigure(0, weight=1)
+        self.prepared_card.rowconfigure(1, weight=1)
+
+        self.prepared_header = ttk.Label(self.prepared_card, style="Muted.TLabel")
+        self.prepared_header.grid(row=0, column=0, sticky="w", pady=(0, 10))
+
+        prepared_list_frame = ttk.Frame(self.prepared_card)
+        prepared_list_frame.grid(row=1, column=0, sticky="nsew")
+        prepared_list_frame.columnconfigure(0, weight=1)
+        prepared_list_frame.rowconfigure(0, weight=1)
+
+        self.prepared_list = tk.Listbox(
+            prepared_list_frame,
+            bg="#141922",
+            fg="#e7ebef",
+            selectbackground="#243142",
+            activestyle="none",
+            highlightthickness=0,
+        )
+        self.prepared_list.grid(row=0, column=0, sticky="nsew")
+        prepared_scroll = ttk.Scrollbar(prepared_list_frame, orient="vertical", command=self.prepared_list.yview)
+        prepared_scroll.grid(row=0, column=1, sticky="ns")
+        self.prepared_list.configure(yscrollcommand=prepared_scroll.set)
+        self.prepared_list.bind("<<ListboxSelect>>", lambda _event: self.sync_selected_prepared_controls())
+        self.prepared_list.bind("<Double-Button-1>", lambda _event: self.add_one_prepared_to_encounter())
+
+        prepared_edit = ttk.Frame(self.prepared_card)
+        self.prepared_edit = prepared_edit
+        self.prepared_count_label = ttk.Label(prepared_edit)
+        self.prepared_count_entry = ttk.Entry(prepared_edit, textvariable=self.prepared_count_var, width=6)
+        self.prepared_initiative_label = ttk.Label(prepared_edit)
+        self.prepared_initiative_entry = ttk.Entry(prepared_edit, textvariable=self.prepared_initiative_var, width=24)
+        self.prepared_count_entry.bind("<KeyRelease>", lambda _event: self.schedule_prepared_apply())
+        self.prepared_count_entry.bind("<Return>", lambda _event: self.apply_prepared_edits())
+        self.prepared_count_entry.bind("<FocusOut>", lambda _event: self.apply_prepared_edits())
+        self.prepared_initiative_entry.bind("<KeyRelease>", lambda _event: self.schedule_prepared_apply())
+        self.prepared_initiative_entry.bind("<Return>", lambda _event: self.apply_prepared_edits())
+        self.prepared_initiative_entry.bind("<FocusOut>", lambda _event: self.apply_prepared_edits())
+
+        prepared_actions = ttk.Frame(self.prepared_card)
+        self.prepared_actions = prepared_actions
+        self.prepared_add_one_button = ttk.Button(prepared_actions, command=self.add_one_prepared_to_encounter)
+        self.prepared_add_all_button = ttk.Button(prepared_actions, command=self.add_all_prepared_to_encounter)
+        self.prepared_increment_one_button = ttk.Button(prepared_actions, command=lambda: self.increment_selected_prepared_count(1))
+        self.prepared_increment_five_button = ttk.Button(prepared_actions, command=lambda: self.increment_selected_prepared_count(5))
+        self.prepared_delete_button = ttk.Button(prepared_actions, command=self.delete_selected_prepared_entry)
+        self.prepared_action_buttons = [
+            self.prepared_add_one_button,
+            self.prepared_add_all_button,
+            self.prepared_increment_one_button,
+            self.prepared_increment_five_button,
+            self.prepared_delete_button,
         ]
 
         self.library_card = ttk.LabelFrame(self.side_panel, style="Section.TLabelframe", padding=10)
@@ -756,6 +862,8 @@ class InitiativeTrackerWindow:
         self.show_hp_player_import_check.grid_forget()
         self.obs_visible_slots_label.grid_forget()
         self.obs_visible_slots_combo.grid_forget()
+        self.portrait_aspect_label.grid_forget()
+        self.portrait_aspect_combo.grid_forget()
 
         if compact:
             for column in range(6):
@@ -776,6 +884,8 @@ class InitiativeTrackerWindow:
             self.show_hp_player_import_check.grid(row=7, column=0, columnspan=3, sticky="w", pady=(8, 0))
             self.obs_visible_slots_label.grid(row=8, column=0, sticky="w", pady=(8, 0))
             self.obs_visible_slots_combo.grid(row=8, column=1, sticky="w", pady=(8, 0))
+            self.portrait_aspect_label.grid(row=9, column=0, sticky="w", pady=(8, 0))
+            self.portrait_aspect_combo.grid(row=9, column=1, sticky="w", pady=(8, 0))
         else:
             for column in range(6):
                 self.top_right.columnconfigure(column, weight=1)
@@ -793,6 +903,8 @@ class InitiativeTrackerWindow:
             self.show_hp_player_import_check.grid(row=6, column=0, columnspan=6, sticky="w", pady=(8, 0))
             self.obs_visible_slots_label.grid(row=7, column=0, columnspan=3, sticky="w", pady=(8, 0))
             self.obs_visible_slots_combo.grid(row=7, column=3, columnspan=3, sticky="w", pady=(8, 0))
+            self.portrait_aspect_label.grid(row=8, column=0, columnspan=3, sticky="w", pady=(8, 0))
+            self.portrait_aspect_combo.grid(row=8, column=3, columnspan=3, sticky="w", pady=(8, 0))
 
     def _layout_library_actions(self, compact: bool) -> None:
         self.library_actions.grid_forget()
@@ -823,21 +935,62 @@ class InitiativeTrackerWindow:
         self.roster_actions.grid_forget()
         for button in self.roster_action_buttons:
             button.grid_forget()
-        for column in range(3):
+        for column in range(4):
             self.roster_actions.columnconfigure(column, weight=0)
 
         self.roster_actions.grid(row=2, column=0, sticky="ew", pady=(10, 0))
         if compact:
             self.roster_actions.columnconfigure(0, weight=1)
             self.add_selected_library_button.grid(row=0, column=0, sticky="ew")
-            self.set_library_portrait_button.grid(row=1, column=0, sticky="ew", pady=(8, 0))
-            self.delete_library_entry_button.grid(row=2, column=0, sticky="ew", pady=(8, 0))
+            self.add_selected_library_now_button.grid(row=1, column=0, sticky="ew", pady=(8, 0))
+            self.set_library_portrait_button.grid(row=2, column=0, sticky="ew", pady=(8, 0))
+            self.delete_library_entry_button.grid(row=3, column=0, sticky="ew", pady=(8, 0))
         else:
-            for column in range(3):
+            for column in range(4):
                 self.roster_actions.columnconfigure(column, weight=1)
             self.add_selected_library_button.grid(row=0, column=0, sticky="ew", padx=(0, 6))
-            self.set_library_portrait_button.grid(row=0, column=1, sticky="ew", padx=6)
-            self.delete_library_entry_button.grid(row=0, column=2, sticky="ew", padx=(6, 0))
+            self.add_selected_library_now_button.grid(row=0, column=1, sticky="ew", padx=6)
+            self.set_library_portrait_button.grid(row=0, column=2, sticky="ew", padx=6)
+            self.delete_library_entry_button.grid(row=0, column=3, sticky="ew", padx=(6, 0))
+
+    def _layout_prepared_controls(self, compact: bool) -> None:
+        self.prepared_edit.grid_forget()
+        self.prepared_count_label.grid_forget()
+        self.prepared_count_entry.grid_forget()
+        self.prepared_initiative_label.grid_forget()
+        self.prepared_initiative_entry.grid_forget()
+        self.prepared_actions.grid_forget()
+        for button in self.prepared_action_buttons:
+            button.grid_forget()
+
+        for column in range(5):
+            self.prepared_edit.columnconfigure(column, weight=0)
+            self.prepared_actions.columnconfigure(column, weight=0)
+
+        self.prepared_edit.grid(row=2, column=0, sticky="ew", pady=(10, 0))
+        self.prepared_count_label.grid(row=0, column=0, sticky="w")
+        self.prepared_count_entry.grid(row=0, column=1, sticky="ew", padx=(8, 10))
+        self.prepared_initiative_label.grid(row=0, column=2, sticky="w")
+        self.prepared_initiative_entry.grid(row=0, column=3, sticky="ew", padx=(8, 0))
+        self.prepared_edit.columnconfigure(1, weight=0)
+        self.prepared_edit.columnconfigure(3, weight=1)
+
+        self.prepared_actions.grid(row=3, column=0, sticky="ew", pady=(8, 0))
+        if compact:
+            for column in range(2):
+                self.prepared_actions.columnconfigure(column, weight=1)
+            for index, button in enumerate(self.prepared_action_buttons):
+                row = index // 2
+                column = index % 2
+                pad_left = 0 if column == 0 else 6
+                pad_right = 0 if column == 1 else 6
+                button.grid(row=row, column=column, sticky="ew", padx=(pad_left, pad_right), pady=(0, 8) if row < 2 else 0)
+        else:
+            for column in range(5):
+                self.prepared_actions.columnconfigure(column, weight=1)
+            for index, button in enumerate(self.prepared_action_buttons):
+                padx = (0, 6) if index == 0 else (6, 0) if index == len(self.prepared_action_buttons) - 1 else 6
+                button.grid(row=0, column=index, sticky="ew", padx=padx)
 
     def _apply_responsive_layout(self, width: int) -> None:
         compact = width < INITIATIVE_COMPACT_BREAKPOINT
@@ -880,10 +1033,12 @@ class InitiativeTrackerWindow:
             self.status_label.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(12, 0))
 
         self.roster_card.grid(row=0, column=0, sticky="nsew", pady=(0, 12))
-        self.library_card.grid(row=1, column=0, sticky="nsew")
+        self.prepared_card.grid(row=1, column=0, sticky="nsew", pady=(0, 12))
+        self.library_card.grid(row=2, column=0, sticky="nsew")
         self._layout_add_controls(compact)
         self._layout_action_controls(compact)
         self._layout_roster_actions(compact)
+        self._layout_prepared_controls(compact)
         self._layout_library_actions(compact)
 
     def set_status(self, status: str) -> None:
@@ -940,11 +1095,20 @@ class InitiativeTrackerWindow:
         self.obs_current_border_check.config(text=self.t("initiative.obs_current_border"))
         self.show_hp_player_import_check.config(text=self.t("initiative.show_hp_player_import"))
         self.obs_visible_slots_label.config(text=self.t("initiative.obs_visible_slots"))
+        self.portrait_aspect_label.config(text=self.t("initiative.portrait_aspect_ratio"))
+        self.portrait_aspect_combo.config(
+            values=[
+                self.portrait_aspect_label_for_code("3:4"),
+                self.portrait_aspect_label_for_code("1:1"),
+                self.portrait_aspect_label_for_code("4:3"),
+            ]
+        )
         self.show_hp_player_import_var.set(self.app.state.initiative.show_hp_player_import)
         self.obs_topmost_var.set(self.app.state.initiative.obs_topmost)
         self.obs_background_var.set(self.app.state.initiative.obs_background)
         self.obs_current_border_var.set(self.app.state.initiative.obs_current_border)
         self.obs_visible_slots_var.set(str(self.app.state.initiative.obs_visible_slots))
+        self.portrait_aspect_ratio_var.set(self.portrait_aspect_label_for_code(self.app.state.initiative.portrait_aspect_ratio))
         self._apply_responsive_layout(max(self.window.winfo_width(), self.window.winfo_reqwidth()))
         self.add_helper_label.config(wraplength=max(260, self.top_left.winfo_width() - 24))
         self.turn_current_label.config(wraplength=max(220, self.top_right.winfo_width() - 24))
@@ -953,8 +1117,18 @@ class InitiativeTrackerWindow:
         self.roster_card.config(text=self.t("initiative.card.combatant_library"))
         self.roster_header.config(text=self.t("initiative.library_header"))
         self.add_selected_library_button.config(text=self.t("initiative.action.add_selected_library"))
+        self.add_selected_library_now_button.config(text=self.t("initiative.action.add_selected_library_now"))
         self.set_library_portrait_button.config(text=self.t("initiative.action.set_library_portrait"))
         self.delete_library_entry_button.config(text=self.t("initiative.action.delete_library_entry"))
+        self.prepared_card.config(text=self.t("initiative.card.prepared_queue"))
+        self.prepared_header.config(text=self.t("initiative.prepared_header"))
+        self.prepared_count_label.config(text=self.t("initiative.label.count"))
+        self.prepared_initiative_label.config(text=self.t("initiative.label.initiative_short"))
+        self.prepared_add_one_button.config(text=self.t("initiative.action.prepared_add_one"))
+        self.prepared_add_all_button.config(text=self.t("initiative.action.prepared_add_all"))
+        self.prepared_increment_one_button.config(text=self.t("initiative.action.prepared_increment_one"))
+        self.prepared_increment_five_button.config(text=self.t("initiative.action.prepared_increment_five"))
+        self.prepared_delete_button.config(text=self.t("initiative.action.prepared_delete"))
         self.library_card.config(text=self.t("initiative.card.library"))
         self.search_label.config(text=self.t("initiative.label.search"))
         self.preview_title.config(text=self.t("initiative.label.preview"))
@@ -991,6 +1165,7 @@ class InitiativeTrackerWindow:
             self.obs_window.refresh()
 
         self.refresh_combatant_library()
+        self.refresh_prepared_queue()
         self.refresh_library_preview()
         self._on_rows_configure()
 
@@ -1016,6 +1191,12 @@ class InitiativeTrackerWindow:
     def library_entry_by_id(self, entry_id: str) -> InitiativeLibraryEntry | None:
         for entry in self.app.state.initiative.library:
             if entry.entry_id == entry_id:
+                return entry
+        return None
+
+    def prepared_entry_by_id(self, prepared_id: str) -> InitiativePreparedEntry | None:
+        for entry in self.app.state.initiative.prepared_queue:
+            if entry.prepared_id == prepared_id:
                 return entry
         return None
 
@@ -1047,6 +1228,15 @@ class InitiativeTrackerWindow:
         index = selection[0]
         if 0 <= index < len(self.combatant_library_refs_by_index):
             return self.combatant_library_refs_by_index[index]
+        return ""
+
+    def selected_prepared_entry_id(self) -> str:
+        selection = self.prepared_list.curselection()
+        if not selection:
+            return ""
+        index = selection[0]
+        if 0 <= index < len(self.prepared_refs_by_index):
+            return self.prepared_refs_by_index[index]
         return ""
 
     def refresh_combatant_library(self) -> None:
@@ -1085,6 +1275,74 @@ class InitiativeTrackerWindow:
             self.roster_list.see(selected_index)
         elif self.combatant_library_refs_by_index:
             self.roster_list.selection_set(0)
+
+    def refresh_prepared_queue(self) -> None:
+        selected_prepared_id = self.selected_prepared_entry_id()
+        labels: list[str] = []
+        refs: list[str] = []
+        for entry in self.app.state.initiative.prepared_queue:
+            label = f"{entry.name} x{entry.count}"
+            initiatives_text = self.prepared_initiatives_summary(entry)
+            if initiatives_text:
+                badge = self.t("initiative.initiative_badge", initiative=initiatives_text)
+                label = f"{label} ({badge})"
+            labels.append(label)
+            refs.append(entry.prepared_id)
+
+        signature = (self.app.state.locale, tuple((ref, label) for ref, label in zip(refs, labels)))
+        if signature != self._prepared_queue_signature:
+            self.prepared_list.delete(0, "end")
+            for label in labels:
+                self.prepared_list.insert("end", label)
+            self.prepared_refs_by_index = refs
+            self._prepared_queue_signature = signature
+
+        selected_index = None
+        for index, prepared_id in enumerate(self.prepared_refs_by_index):
+            if prepared_id == selected_prepared_id:
+                selected_index = index
+                break
+
+        self.prepared_list.selection_clear(0, "end")
+        if selected_index is not None:
+            self.prepared_list.selection_set(selected_index)
+            self.prepared_list.see(selected_index)
+        elif self.prepared_refs_by_index:
+            self.prepared_list.selection_set(0)
+        self.sync_selected_prepared_controls()
+
+    def sync_selected_prepared_controls(self) -> None:
+        entry = self.prepared_entry_by_id(self.selected_prepared_entry_id())
+        if entry is None:
+            self.prepared_count_var.set("1")
+            self.prepared_initiative_var.set("0")
+            return
+        self.prepared_count_var.set(str(entry.count))
+        self.prepared_initiative_var.set(self.format_prepared_initiatives(entry))
+
+    def prepared_initiatives_summary(self, entry: InitiativePreparedEntry) -> str:
+        initiatives = entry.initiatives[: entry.count]
+        if not initiatives or all(initiative == 0 for initiative in initiatives):
+            return ""
+        if len(set(initiatives)) == 1:
+            return str(initiatives[0])
+        visible = ", ".join(str(initiative) for initiative in initiatives[:5])
+        return f"{visible}..." if len(initiatives) > 5 else visible
+
+    def format_prepared_initiatives(self, entry: InitiativePreparedEntry) -> str:
+        initiatives = entry.initiatives[: entry.count]
+        if not initiatives:
+            return str(entry.initiative)
+        if len(set(initiatives)) == 1:
+            return str(initiatives[0])
+        return ", ".join(str(initiative) for initiative in initiatives)
+
+    def parse_prepared_initiatives(self, value: str) -> list[int]:
+        normalized = value.replace(";", ",").replace("|", ",").replace("\n", ",")
+        tokens: list[str] = []
+        for chunk in normalized.split(","):
+            tokens.extend(chunk.split())
+        return [_safe_int(token, 0) for token in tokens if token.strip()]
 
     def _build_combatant(self, name: str, initiative: int, portrait_ref: str) -> InitiativeCombatant:
         return InitiativeCombatant(
@@ -1150,6 +1408,36 @@ class InitiativeTrackerWindow:
         self.app.state.initiative.library.append(entry)
         self.persist(self.t("initiative.status.saved_to_library", name=entry.name))
 
+    def queue_selected_library_combatant(self) -> None:
+        entry_id = self.selected_library_entry_id()
+        if not entry_id:
+            self.set_status(self.t("initiative.status.no_library_selected"))
+            return
+        entry = self.library_entry_by_id(entry_id)
+        if entry is None:
+            self.set_status(self.t("initiative.status.no_library_selected"))
+            return
+
+        for prepared in self.app.state.initiative.prepared_queue:
+            if prepared.source_library_entry_id == entry.entry_id:
+                prepared.count += 1
+                prepared.initiatives.append(0)
+                self._prepared_queue_signature = None
+                self.persist(self.t("initiative.status.queued_existing", name=prepared.name, count=prepared.count))
+                return
+
+        prepared = InitiativePreparedEntry(
+            name=entry.name,
+            count=1,
+            initiative=0,
+            initiatives=[0],
+            portrait_ref=entry.portrait_ref,
+            source_library_entry_id=entry.entry_id,
+        )
+        self.app.state.initiative.prepared_queue.append(prepared)
+        self._prepared_queue_signature = None
+        self.persist(self.t("initiative.status.queued", name=prepared.name))
+
     def add_selected_library_combatant(self) -> None:
         entry_id = self.selected_library_entry_id()
         if not entry_id:
@@ -1180,6 +1468,103 @@ class InitiativeTrackerWindow:
         entry.portrait_ref = selected
         self._combatant_library_signature = None
         self.persist(self.t("initiative.status.library_portrait_updated", name=entry.name))
+
+    def schedule_prepared_apply(self) -> None:
+        if self._prepared_apply_after_id is not None:
+            try:
+                self.window.after_cancel(self._prepared_apply_after_id)
+            except tk.TclError:
+                pass
+        self._prepared_apply_after_id = self.window.after(700, self.apply_prepared_edits)
+
+    def apply_prepared_edits(self) -> None:
+        if self._prepared_apply_after_id is not None:
+            pending_job = self._prepared_apply_after_id
+            self._prepared_apply_after_id = None
+            try:
+                self.window.after_cancel(pending_job)
+            except tk.TclError:
+                pass
+        entry = self.prepared_entry_by_id(self.selected_prepared_entry_id())
+        if entry is None:
+            if self.prepared_refs_by_index:
+                self.set_status(self.t("initiative.status.no_prepared_selected"))
+            return
+        count = max(1, _safe_int(self.prepared_count_var.get(), entry.count))
+        initiatives = self.parse_prepared_initiatives(self.prepared_initiative_var.get())
+        if not initiatives:
+            initiatives = [0 for _ in range(count)]
+        elif len(initiatives) == 1:
+            initiatives = [initiatives[0] for _ in range(count)]
+        elif len(initiatives) != count:
+            count = len(initiatives)
+            self.prepared_count_var.set(str(count))
+        initiative = initiatives[0]
+        if entry.count == count and entry.initiatives == initiatives and entry.initiative == initiative:
+            return
+        entry.count = count
+        entry.initiative = initiative
+        entry.initiatives = initiatives
+        self._prepared_queue_signature = None
+        self.persist(self.t("initiative.status.prepared_updated", name=entry.name))
+
+    def increment_selected_prepared_count(self, amount: int) -> None:
+        entry = self.prepared_entry_by_id(self.selected_prepared_entry_id())
+        if entry is None:
+            self.set_status(self.t("initiative.status.no_prepared_selected"))
+            return
+        default_initiative = entry.initiatives[-1] if entry.initiatives else entry.initiative
+        entry.count = max(1, entry.count + amount)
+        entry.initiatives.extend([default_initiative for _ in range(amount)])
+        self._prepared_queue_signature = None
+        self.persist(self.t("initiative.status.prepared_updated", name=entry.name))
+
+    def _add_prepared_to_encounter(self, entry: InitiativePreparedEntry, amount: int) -> int:
+        amount = max(0, min(amount, entry.count))
+        for _ in range(amount):
+            initiative = entry.initiatives.pop(0) if entry.initiatives else entry.initiative
+            combatant = self._build_combatant(self._next_library_combatant_name(entry.name), initiative, entry.portrait_ref)
+            self._add_combatant_to_encounter(combatant)
+        entry.count -= amount
+        entry.initiative = entry.initiatives[0] if entry.initiatives else entry.initiative
+        if entry.count <= 0:
+            self.app.state.initiative.prepared_queue = [
+                item for item in self.app.state.initiative.prepared_queue if item.prepared_id != entry.prepared_id
+            ]
+        self._prepared_queue_signature = None
+        return amount
+
+    def add_one_prepared_to_encounter(self) -> None:
+        entry = self.prepared_entry_by_id(self.selected_prepared_entry_id())
+        if entry is None:
+            self.set_status(self.t("initiative.status.no_prepared_selected"))
+            return
+        added = self._add_prepared_to_encounter(entry, 1)
+        self.persist(self.t("initiative.status.prepared_added", name=entry.name, count=added))
+
+    def add_all_prepared_to_encounter(self) -> None:
+        entry = self.prepared_entry_by_id(self.selected_prepared_entry_id())
+        if entry is None:
+            self.set_status(self.t("initiative.status.no_prepared_selected"))
+            return
+        original_count = entry.count
+        added = self._add_prepared_to_encounter(entry, original_count)
+        self.persist(self.t("initiative.status.prepared_added", name=entry.name, count=added))
+
+    def delete_selected_prepared_entry(self) -> None:
+        prepared_id = self.selected_prepared_entry_id()
+        if not prepared_id:
+            self.set_status(self.t("initiative.status.no_prepared_selected"))
+            return
+        entry = self.prepared_entry_by_id(prepared_id)
+        if entry is None:
+            self.set_status(self.t("initiative.status.no_prepared_selected"))
+            return
+        self.app.state.initiative.prepared_queue = [
+            item for item in self.app.state.initiative.prepared_queue if item.prepared_id != prepared_id
+        ]
+        self._prepared_queue_signature = None
+        self.persist(self.t("initiative.status.prepared_deleted", name=entry.name))
 
     def delete_selected_library_entry(self) -> None:
         entry_id = self.selected_library_entry_id()
@@ -1260,60 +1645,86 @@ class InitiativeTrackerWindow:
     def get_portrait_image(self, portrait_ref: str, size: int) -> object | None:
         if not portrait_ref:
             return None
-        cache_key = (portrait_ref, size)
+        portrait_width, portrait_height = self.portrait_dimensions(size)
+        cache_key = (portrait_ref, portrait_width, portrait_height)
         if cache_key in self.portrait_cache:
             return self.portrait_cache[cache_key]
         image_path = self.resolve_portrait_path(portrait_ref)
         if image_path is None:
             return None
+        image = self.get_pillow_portrait_image(image_path, portrait_width, portrait_height)
+        if image is not None:
+            self.portrait_cache[cache_key] = image
+            return image
         try:
             image = tk.PhotoImage(file=str(image_path))
         except tk.TclError:
-            image = self.get_pillow_portrait_image(image_path, size)
-            if image is None:
-                return None
-            self.portrait_cache[cache_key] = image
-            return image
-        scale = max(1, math.ceil(max(image.width() / max(1, size), image.height() / max(1, size))))
+            return None
+        scale = max(1, math.floor(min(image.width() / max(1, portrait_width), image.height() / max(1, portrait_height))))
         if scale > 1:
             image = image.subsample(scale, scale)
+        if 0 < image.width() < portrait_width and 0 < image.height() < portrait_height:
+            zoom = max(1, min(portrait_width // image.width(), portrait_height // image.height()))
+            if zoom > 1:
+                image = image.zoom(zoom, zoom)
         self.portrait_cache[cache_key] = image
         return image
 
-    def get_pillow_portrait_image(self, image_path: Path, size: int) -> object | None:
+    def get_pillow_portrait_image(self, image_path: Path, portrait_width: int, portrait_height: int) -> object | None:
         if Image is None or ImageTk is None:
             return None
         try:
             with Image.open(image_path) as source:
                 resampling = getattr(getattr(Image, "Resampling", Image), "LANCZOS", 1)
-                source.thumbnail((size, size), resampling)
-                image = ImageTk.PhotoImage(source.copy())
+                source = source.convert("RGBA")
+                alpha_bbox = source.getchannel("A").getbbox()
+                if alpha_bbox is not None:
+                    source = source.crop(alpha_bbox)
+                width, height = source.size
+                scale = max(portrait_width / max(1, width), portrait_height / max(1, height))
+                target_size = (
+                    max(1, math.ceil(width * scale)),
+                    max(1, math.ceil(height * scale)),
+                )
+                source = source.resize(target_size, resampling)
+                left = max(0, (target_size[0] - portrait_width) // 2)
+                top = max(0, (target_size[1] - portrait_height) // 2)
+                source = source.crop((left, top, left + portrait_width, top + portrait_height))
+                image = ImageTk.PhotoImage(source)
         except (OSError, tk.TclError):
             return None
         return image
 
-    def _draw_missing_portrait(self, canvas: tk.Canvas, size: int, background: str) -> None:
+    def _draw_portrait_image(self, canvas: tk.Canvas, image: object, size: int, background: str) -> None:
+        portrait_width, portrait_height = self.portrait_dimensions(size)
         canvas.delete("all")
-        canvas.config(width=size, height=size, bg=background, highlightthickness=0, bd=0)
+        canvas.config(width=portrait_width, height=portrait_height, bg=background, highlightthickness=0, bd=0)
+        canvas.create_image(portrait_width // 2, portrait_height // 2, image=image, anchor="center")
+        canvas.image = image
+
+    def _draw_missing_portrait(self, canvas: tk.Canvas, size: int, background: str) -> None:
+        portrait_width, portrait_height = self.portrait_dimensions(size)
+        canvas.delete("all")
+        canvas.config(width=portrait_width, height=portrait_height, bg=background, highlightthickness=0, bd=0)
         if background != TRANSPARENT_KEY:
-            canvas.create_rectangle(2, 2, size - 2, size - 2, fill="#1e2530", outline="#394455", width=2)
+            canvas.create_rectangle(2, 2, portrait_width - 2, portrait_height - 2, fill="#1e2530", outline="#394455", width=2)
         canvas.create_text(
-            size // 2,
-            size // 2,
+            portrait_width // 2,
+            portrait_height // 2,
             text=self.t("initiative.no_portrait"),
-            width=max(40, size - 16),
+            width=max(40, portrait_width - 16),
             fill="#d0dae8",
-            font=("Segoe UI Semibold", max(10, size // 8)),
+            font=("Segoe UI Semibold", max(10, min(portrait_width, portrait_height) // 8)),
         )
 
     def create_portrait_widget(self, parent: tk.Misc, portrait_ref: str, size: int, background: str) -> tk.Widget:
         image = self.get_portrait_image(portrait_ref, size)
+        portrait_width, portrait_height = self.portrait_dimensions(size)
+        canvas = tk.Canvas(parent, width=portrait_width, height=portrait_height, bg=background, highlightthickness=0, bd=0)
         if image is not None:
-            label = tk.Label(parent, image=image, bg=background, bd=0, highlightthickness=0)
-            label.image = image
-            return label
-        canvas = tk.Canvas(parent, width=size, height=size, bg=background, highlightthickness=0, bd=0)
-        self._draw_missing_portrait(canvas, size, background)
+            self._draw_portrait_image(canvas, image, size, background)
+        else:
+            self._draw_missing_portrait(canvas, size, background)
         return canvas
 
     def refresh_portrait_widget(
@@ -1326,28 +1737,23 @@ class InitiativeTrackerWindow:
     ) -> tk.Widget:
         image = self.get_portrait_image(portrait_ref, size)
         if image is not None:
-            if isinstance(widget, tk.Label):
-                widget.config(image=image, bg=background, text="")
-                widget.image = image
+            if isinstance(widget, tk.Canvas):
+                self._draw_portrait_image(widget, image, size, background)
                 return widget
-            if widget is not None and widget.winfo_exists():
-                widget.destroy()
-            label = tk.Label(parent, image=image, bg=background, bd=0, highlightthickness=0)
-            label.image = image
-            return label
 
-        if isinstance(widget, tk.Canvas):
-            self._draw_missing_portrait(widget, size, background)
-            return widget
         if widget is not None and widget.winfo_exists():
             widget.destroy()
-        canvas = tk.Canvas(parent, width=size, height=size, bg=background, highlightthickness=0, bd=0)
-        self._draw_missing_portrait(canvas, size, background)
+        portrait_width, portrait_height = self.portrait_dimensions(size)
+        canvas = tk.Canvas(parent, width=portrait_width, height=portrait_height, bg=background, highlightthickness=0, bd=0)
+        if image is not None:
+            self._draw_portrait_image(canvas, image, size, background)
+        else:
+            self._draw_missing_portrait(canvas, size, background)
         return canvas
 
     def refresh_library_preview(self) -> None:
         selected = self.selected_portrait_ref()
-        signature = (selected, self.app.state.locale)
+        signature = (selected, self.app.state.locale, self.app.state.initiative.portrait_aspect_ratio)
         if signature == self._preview_signature:
             return
         self._preview_signature = signature
@@ -1419,6 +1825,10 @@ class InitiativeTrackerWindow:
         for combatant in self.app.state.initiative.combatants:
             if combatant.portrait_ref == selected:
                 combatant.portrait_ref = ""
+        for prepared in self.app.state.initiative.prepared_queue:
+            if prepared.portrait_ref == selected:
+                prepared.portrait_ref = ""
+                self._prepared_queue_signature = None
         self.portrait_cache.clear()
         self.refresh_library()
         self.persist(self.t("initiative.status.deleted_portrait"))
@@ -1578,6 +1988,19 @@ class InitiativeTrackerWindow:
         if self.obs_window is not None:
             self.obs_window.refresh()
         self.persist(self.t("initiative.status.obs_settings_saved"))
+
+    def change_portrait_aspect_ratio(self) -> None:
+        aspect_ratio = self.portrait_aspect_code_from_label(self.portrait_aspect_ratio_var.get())
+        if self.app.state.initiative.portrait_aspect_ratio == aspect_ratio:
+            return
+        self.app.state.initiative.portrait_aspect_ratio = aspect_ratio
+        self.portrait_cache.clear()
+        self._preview_signature = None
+        for row in self.row_widgets.values():
+            row._portrait_signature = ("", "")
+        if self.obs_window is not None:
+            self.obs_window.refresh()
+        self.persist(self.t("initiative.status.portrait_aspect_saved"))
 
     def toggle_obs_window(self) -> None:
         if self.obs_window is not None:

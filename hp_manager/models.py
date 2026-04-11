@@ -404,9 +404,64 @@ class InitiativeLibraryEntry:
 
 
 @dataclass(slots=True)
+class InitiativePreparedEntry:
+    name: str
+    count: int = 1
+    initiative: int = 0
+    initiatives: list[int] = field(default_factory=list)
+    portrait_ref: str = ""
+    source_library_entry_id: str = ""
+    prepared_id: str = field(default_factory=lambda: uuid4().hex)
+
+    def __post_init__(self) -> None:
+        self.name = (self.name or "Unnamed").strip() or "Unnamed"
+        self.count = max(1, _clean_int(self.count, 1))
+        self.initiative = _clean_int(self.initiative, 0)
+        self.initiatives = [
+            _clean_int(value, self.initiative)
+            for value in (self.initiatives if isinstance(self.initiatives, list) else [])
+        ]
+        if not self.initiatives:
+            self.initiatives = [self.initiative for _ in range(self.count)]
+        elif len(self.initiatives) < self.count:
+            self.initiatives.extend([self.initiatives[-1] for _ in range(self.count - len(self.initiatives))])
+        elif len(self.initiatives) > self.count:
+            self.count = len(self.initiatives)
+        self.initiative = self.initiatives[0] if self.initiatives else self.initiative
+        self.portrait_ref = str(self.portrait_ref or "").strip()
+        self.source_library_entry_id = str(self.source_library_entry_id or "").strip()
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "prepared_id": self.prepared_id,
+            "name": self.name,
+            "count": self.count,
+            "initiative": self.initiative,
+            "initiatives": list(self.initiatives),
+            "portrait_ref": self.portrait_ref,
+            "source_library_entry_id": self.source_library_entry_id,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, object]) -> "InitiativePreparedEntry":
+        raw_initiatives = data.get("initiatives", [])
+        initiative = _clean_int(data.get("initiative"), 0)
+        return cls(
+            prepared_id=str(data.get("prepared_id") or uuid4().hex),
+            name=str(data.get("name") or "Unnamed"),
+            count=max(1, _clean_int(data.get("count"), 1)),
+            initiative=initiative,
+            initiatives=[_clean_int(value, initiative) for value in raw_initiatives] if isinstance(raw_initiatives, list) else [],
+            portrait_ref=str(data.get("portrait_ref") or ""),
+            source_library_entry_id=str(data.get("source_library_entry_id") or ""),
+        )
+
+
+@dataclass(slots=True)
 class InitiativeState:
     combatants: list[InitiativeCombatant] = field(default_factory=list)
     library: list[InitiativeLibraryEntry] = field(default_factory=list)
+    prepared_queue: list[InitiativePreparedEntry] = field(default_factory=list)
     current_turn_index: int = 0
     round_number: int = 1
     started: bool = False
@@ -415,6 +470,11 @@ class InitiativeState:
     obs_background: bool = True
     obs_current_border: bool = False
     obs_visible_slots: int = 12
+    portrait_aspect_ratio: str = "3:4"
+
+    @staticmethod
+    def valid_portrait_aspect_ratios() -> set[str]:
+        return {"1:1", "4:3", "3:4"}
 
     def __post_init__(self) -> None:
         self.combatants = [
@@ -427,9 +487,16 @@ class InitiativeState:
             for item in self.library
             if isinstance(item, (InitiativeLibraryEntry, dict))
         ]
+        self.prepared_queue = [
+            item if isinstance(item, InitiativePreparedEntry) else InitiativePreparedEntry.from_dict(item)
+            for item in self.prepared_queue
+            if isinstance(item, (InitiativePreparedEntry, dict))
+        ]
         self.round_number = max(1, _clean_int(self.round_number, 1))
         self.current_turn_index = max(0, _clean_int(self.current_turn_index, 0))
         self.obs_visible_slots = max(4, min(12, _clean_int(self.obs_visible_slots, 12)))
+        if self.portrait_aspect_ratio not in self.valid_portrait_aspect_ratios():
+            self.portrait_aspect_ratio = "3:4"
         if self.combatants:
             self.current_turn_index = min(self.current_turn_index, len(self.combatants) - 1)
         else:
@@ -440,6 +507,7 @@ class InitiativeState:
         return {
             "combatants": [combatant.to_dict() for combatant in self.combatants],
             "library": [entry.to_dict() for entry in self.library],
+            "prepared_queue": [entry.to_dict() for entry in self.prepared_queue],
             "current_turn_index": self.current_turn_index,
             "round_number": self.round_number,
             "started": self.started,
@@ -448,6 +516,9 @@ class InitiativeState:
             "obs_background": self.obs_background,
             "obs_current_border": self.obs_current_border,
             "obs_visible_slots": self.obs_visible_slots,
+            "portrait_aspect_ratio": self.portrait_aspect_ratio
+            if self.portrait_aspect_ratio in self.valid_portrait_aspect_ratios()
+            else "3:4",
         }
 
     @classmethod
@@ -456,15 +527,23 @@ class InitiativeState:
             return cls()
         raw_combatants = data.get("combatants", [])
         raw_library = data.get("library", [])
+        raw_prepared_queue = data.get("prepared_queue", [])
         combatants = []
         library = []
+        prepared_queue = []
         if isinstance(raw_combatants, list):
             combatants = [InitiativeCombatant.from_dict(item) for item in raw_combatants if isinstance(item, dict)]
         if isinstance(raw_library, list):
             library = [InitiativeLibraryEntry.from_dict(item) for item in raw_library if isinstance(item, dict)]
+        if isinstance(raw_prepared_queue, list):
+            prepared_queue = [InitiativePreparedEntry.from_dict(item) for item in raw_prepared_queue if isinstance(item, dict)]
+        portrait_aspect_ratio = str(data.get("portrait_aspect_ratio") or "3:4")
+        if portrait_aspect_ratio not in cls.valid_portrait_aspect_ratios():
+            portrait_aspect_ratio = "3:4"
         return cls(
             combatants=combatants,
             library=library,
+            prepared_queue=prepared_queue,
             current_turn_index=_clean_int(data.get("current_turn_index"), 0),
             round_number=max(1, _clean_int(data.get("round_number"), 1)),
             started=bool(data.get("started", False)),
@@ -473,6 +552,7 @@ class InitiativeState:
             obs_background=bool(data.get("obs_background", True)),
             obs_current_border=bool(data.get("obs_current_border", False)),
             obs_visible_slots=max(4, min(12, _clean_int(data.get("obs_visible_slots"), 12))),
+            portrait_aspect_ratio=portrait_aspect_ratio,
         )
 
 
