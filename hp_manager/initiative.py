@@ -73,13 +73,10 @@ class InitiativeObsWindow:
             card = tk.Frame(self.cards_strip, highlightthickness=2)
             portrait_host = tk.Frame(card, bd=0, highlightthickness=0)
             portrait_host.pack(padx=12, pady=(12, 12))
-            name_canvas = tk.Canvas(card, highlightthickness=0, bd=0)
-            name_canvas.pack(fill="x", padx=10, pady=(0, 18))
             self.card_widgets.append(
                 {
                     "card": card,
                     "portrait_host": portrait_host,
-                    "name_label": name_canvas,
                     "portrait_widget": None,
                     "portrait_signature": None,
                 }
@@ -116,7 +113,6 @@ class InitiativeObsWindow:
     ) -> None:
         card = slot["card"]
         portrait_host = slot["portrait_host"]
-        name_canvas = slot["name_label"]
         portrait_widget = slot["portrait_widget"]
         if background_visible:
             card_bg = "#25241e" if is_current else "#22211b" if is_same_turn else "#171c24"
@@ -125,7 +121,6 @@ class InitiativeObsWindow:
             card_gap = INITIATIVE_OBS_CARD_GAP
             portrait_padx = 12
             portrait_pady = (12, 10 if is_same_turn else 12)
-            name_padx = 10
             top_padding = 0 if is_same_turn else 20
         else:
             card_bg = base_bg
@@ -134,38 +129,17 @@ class InitiativeObsWindow:
             card_gap = INITIATIVE_OBS_CARD_GAP
             portrait_padx = 0
             portrait_pady = (0, 4)
-            name_padx = 0
             top_padding = 0
         portrait_size = 132 if is_same_turn else 112
-        card_width = portrait_size + portrait_padx * 2
-        name_width = max(24, card_width - name_padx * 2)
-        name_height = 44 if background_visible else 38
 
         card.configure(bg=card_bg, highlightbackground=outline, highlightthickness=highlight)
         portrait_host.configure(bg=card_bg)
-        name_canvas.config(
-            bg=card_bg,
-            width=name_width,
-            height=name_height,
-        )
-        name_canvas.delete("all")
-        name_canvas.create_text(
-            name_width // 2,
-            2,
-            anchor="n",
-            fill="#f4f5f7",
-            text=combatant.name,
-            font=("Segoe UI Semibold", 13 if is_same_turn else 12),
-            width=name_width,
-            justify="center",
-        )
 
         if card.winfo_manager():
             card.pack_configure(side="left", fill="y", padx=(0, card_gap), pady=(top_padding, 0))
         else:
             card.pack(side="left", fill="y", padx=(0, card_gap), pady=(top_padding, 0))
         portrait_host.pack_configure(padx=portrait_padx, pady=portrait_pady)
-        name_canvas.pack_configure(padx=name_padx, pady=(0, 0))
 
         portrait_signature = (combatant.portrait_ref, portrait_size, card_bg)
         if portrait_signature != slot["portrait_signature"] or portrait_widget is None:
@@ -212,7 +186,7 @@ class InitiativeObsWindow:
             for combatant in combatants
         )
         header_block = 72
-        card_vertical_space = largest_portrait + 64
+        card_vertical_space = largest_portrait + 32
         return max(220, header_block + card_vertical_space + 18)
 
     def refresh(self) -> None:
