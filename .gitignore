@@ -180,3 +180,4 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 hp_manager_state.json
+portraits/someone.png
