@@ -1410,6 +1410,12 @@ class HealthPointsApp:
         style.configure("CardTitle.TLabel", background="#171a1f", foreground="#f0f3f6", font=("Segoe UI Semibold", 12))
         style.configure("Header.TLabel", background="#101214", foreground="#f0f3f6", font=("Segoe UI Semibold", 18))
         style.configure("TButton", padding=(10, 6))
+        style.configure("Accent.TButton", background="#d8aa4f", foreground="#101214", padding=(12, 7))
+        style.map(
+            "Accent.TButton",
+            background=[("pressed", "#a8772d"), ("active", "#efca74")],
+            foreground=[("pressed", "#101214"), ("active", "#101214")],
+        )
         style.configure("TEntry", padding=(6, 4))
         style.configure("Section.TLabelframe", background="#101214", foreground="#f0f3f6")
         style.configure("Section.TLabelframe.Label", background="#101214", foreground="#f0f3f6", font=("Segoe UI Semibold", 11))

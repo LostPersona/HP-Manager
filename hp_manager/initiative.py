@@ -476,6 +476,13 @@ class InitiativeTrackerWindow:
         self.obs_window = None
         self.refresh()
 
+    def show_help(self) -> None:
+        messagebox.showinfo(
+            self.t("initiative.help.title"),
+            self.t("initiative.help.body"),
+            parent=self.window,
+        )
+
     def _build_layout(self) -> None:
         container = ttk.Frame(self.window, padding=16)
         container.pack(fill="both", expand=True)
@@ -484,10 +491,17 @@ class InitiativeTrackerWindow:
         container.rowconfigure(2, weight=1)
         self.container = container
 
-        self.title_label = ttk.Label(container, style="Header.TLabel")
+        header = ttk.Frame(container)
+        header.grid(row=0, column=0, columnspan=2, sticky="ew")
+        header.columnconfigure(0, weight=1)
+        self.header = header
+
+        self.title_label = ttk.Label(header, style="Header.TLabel")
         self.title_label.grid(row=0, column=0, sticky="w")
-        self.subtitle_label = ttk.Label(container, style="Muted.TLabel")
-        self.subtitle_label.grid(row=0, column=1, sticky="e")
+        self.subtitle_label = ttk.Label(header, style="Muted.TLabel")
+        self.subtitle_label.grid(row=1, column=0, sticky="w", pady=(4, 0))
+        self.help_button = ttk.Button(header, width=3, style="Accent.TButton", command=self.show_help)
+        self.help_button.grid(row=0, column=1, rowspan=2, sticky="ne", padx=(16, 0))
 
         top_left = ttk.LabelFrame(container, style="Section.TLabelframe", padding=10)
         self.top_left = top_left
@@ -497,7 +511,7 @@ class InitiativeTrackerWindow:
         self.add_name_entry = ttk.Entry(top_left, textvariable=self.add_name_var)
         self.add_initiative_label = ttk.Label(top_left)
         self.add_initiative_entry = ttk.Entry(top_left, textvariable=self.add_initiative_var, width=8)
-        self.add_button = ttk.Button(top_left, command=self.add_combatant)
+        self.add_button = ttk.Button(top_left, style="Accent.TButton", command=self.add_combatant)
         self.save_to_library_button = ttk.Button(top_left, command=self.save_current_to_library)
 
         player_row = ttk.Frame(top_left)
@@ -510,9 +524,9 @@ class InitiativeTrackerWindow:
         top_right = ttk.Frame(container)
         self.top_right = top_right
 
-        self.start_button = ttk.Button(top_right, command=self.start_encounter)
+        self.start_button = ttk.Button(top_right, style="Accent.TButton", command=self.start_encounter)
         self.previous_button = ttk.Button(top_right, command=self.previous_turn)
-        self.next_button = ttk.Button(top_right, command=self.next_turn)
+        self.next_button = ttk.Button(top_right, style="Accent.TButton", command=self.next_turn)
         self.reset_button = ttk.Button(top_right, command=self.reset_encounter)
         self.clear_button = ttk.Button(top_right, command=self.clear_encounter)
         self.obs_button = ttk.Button(top_right, command=self.toggle_obs_window)
@@ -898,6 +912,8 @@ class InitiativeTrackerWindow:
         self.window.title(self.t("initiative.window_title"))
         self.title_label.config(text=self.t("initiative.header"))
         self.subtitle_label.config(text=self.t("initiative.subtitle"))
+        self.subtitle_label.config(wraplength=max(320, self.window.winfo_width() - 180))
+        self.help_button.config(text=self.t("initiative.help.button"))
         self.top_left.config(text=self.t("initiative.card.add_combatant"))
         self.add_helper_label.config(text=self.t("initiative.add_helper"))
         self.add_name_label.config(text=self.t("label.name"))
